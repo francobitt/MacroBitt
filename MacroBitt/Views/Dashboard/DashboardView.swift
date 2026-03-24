@@ -195,8 +195,9 @@ private struct TodaysMealsCard: View {
             .contentShape(Rectangle())
             .onTapGesture { onTap() }
 
-            Divider()
-                .overlay(Color.white.opacity(0.08))
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
 
             ForEach(MealType.allCases, id: \.self) { meal in
                 let mealEntries = entries.filter { $0.mealType == meal }
@@ -224,8 +225,9 @@ private struct TodaysMealsCard: View {
                 .onTapGesture { onTap() }
 
                 if meal != MealType.allCases.last {
-                    Divider()
-                        .overlay(Color.white.opacity(0.05))
+                    Rectangle()
+                        .fill(Color.white.opacity(0.05))
+                        .frame(height: 1)
                         .padding(.leading, 16)
                 }
             }
