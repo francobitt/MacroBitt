@@ -49,3 +49,14 @@ MVVM with SwiftUI. The project is in **Phase 0** (scaffold only) — directories
 
 - Do not add a `ModelContainer` to `MacroBittApp` until at least one `@Model` type exists — an empty schema crashes on launch.
 - HealthKit and CloudKit entitlements are already configured; use them without modifying the entitlements file unless adding new capabilities.
+
+## Data Integrity Rules
+
+**MACRO-CALORIE RULE:** All food entries must be validated with the formula
+`(fat × 9) + (carbs × 4) + (protein × 4) = total calories`, with a tolerance
+of 5 calories. Entries outside this tolerance must be flagged (`isFlagged = true`,
+`calorieDiscrepancy` set to the signed total difference). This validation applies
+to every code path that creates or modifies a FoodEntry — no exceptions.
+
+Use `MacroValidator.validate(calories:protein:carbs:fat:)` in
+`MacroBitt/Utilities/MacroValidator.swift`.

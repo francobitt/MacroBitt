@@ -20,6 +20,8 @@ final class FoodEntry {
     var servingCount: Double
     var timestamp: Date
     var mealType: MealType
+    var isFlagged: Bool = false
+    var calorieDiscrepancy: Double = 0   // signed total kcal: stored calories − calculated
 
     init(
         id: UUID = UUID(),
@@ -31,7 +33,9 @@ final class FoodEntry {
         servingSize: String? = nil,
         servingCount: Double = 1.0,
         timestamp: Date = Date(),
-        mealType: MealType
+        mealType: MealType,
+        isFlagged: Bool = false,
+        calorieDiscrepancy: Double = 0.0
     ) {
         self.id = id
         self.name = name
@@ -43,5 +47,7 @@ final class FoodEntry {
         self.servingCount = servingCount
         self.timestamp = timestamp
         self.mealType = mealType
+        self.isFlagged = isFlagged
+        self.calorieDiscrepancy = calorieDiscrepancy
     }
 }

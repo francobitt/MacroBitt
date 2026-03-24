@@ -66,6 +66,16 @@ struct AddFoodEntryView: View {
     private var carbs:    Double { Double(carbsText)    ?? 0 }
     private var fat:      Double { Double(fatText)      ?? 0 }
 
+    private var validationResult: MacroValidator.Result? {
+        guard let cal  = Double(caloriesText),
+              let prot = Double(proteinText),
+              let carb = Double(carbsText),
+              let fat  = Double(fatText)
+        else { return nil }
+        return MacroValidator.validate(
+            calories: cal, protein: prot, carbs: carb, fat: fat)
+    }
+
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && !caloriesText.isEmpty
     }
@@ -87,6 +97,17 @@ struct AddFoodEntryView: View {
                     MacroField(label: "Protein",  unit: "g",    text: $proteinText)
                     MacroField(label: "Carbs",    unit: "g",    text: $carbsText)
                     MacroField(label: "Fat",      unit: "g",    text: $fatText)
+
+                    if let result = validationResult, !result.isValid {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Calculated: \(Int(result.calculatedCalories)) kcal · Entered: \(Int(calories)) kcal · Difference: \(Int(abs(result.difference)))")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        .listRowBackground(Color.orange.opacity(0.12))
+                    }
                 }
 
                 Section("Servings") {
@@ -152,6 +173,10 @@ struct AddFoodEntryView: View {
             entry.servingSize  = sizeValue
             entry.servingCount = servingCount
             entry.mealType     = mealType
+            let validation = MacroValidator.validate(
+                calories: calories, protein: protein, carbs: carbs, fat: fat)
+            entry.isFlagged          = !validation.isValid
+            entry.calorieDiscrepancy = validation.difference * servingCount
         } else {
             let entry = FoodEntry(
                 name:         trimmedName,
@@ -165,6 +190,10 @@ struct AddFoodEntryView: View {
             )
             let log = fetchOrCreateDailyLog(for: targetDate)
             log.entries.append(entry)
+            let validation = MacroValidator.validate(
+                calories: calories, protein: protein, carbs: carbs, fat: fat)
+            entry.isFlagged          = !validation.isValid
+            entry.calorieDiscrepancy = validation.difference * servingCount
         }
 
         try? modelContext.save()

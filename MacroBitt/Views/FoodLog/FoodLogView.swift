@@ -238,6 +238,11 @@ private struct FoodEntryRow: View {
                 Text(entry.name)
                     .font(.body)
                 Spacer()
+                if entry.isFlagged {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.yellow)
+                }
                 Text(entry.calories.formatted(.number.precision(.fractionLength(0))) + " kcal")
                     .font(.body)
                     .fontWeight(.medium)
