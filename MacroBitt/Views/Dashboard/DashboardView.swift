@@ -9,15 +9,33 @@ import SwiftData
 // MARK: - Root Tab View
 
 struct DashboardView: View {
+    @Binding var selectedTab: Int
     @Environment(\.modelContext) private var modelContext
+    @State private var showingQuickAdd = false
 
     private var today: Date { Calendar.current.startOfDay(for: Date()) }
 
     var body: some View {
         NavigationStack {
-            DashboardContentView(today: today)
-                .navigationTitle("Dashboard")
-                .navigationBarTitleDisplayMode(.inline)
+            DashboardContentView(
+                today: today,
+                onNavigateToLog: { selectedTab = 1 }
+            )
+            .navigationTitle("Dashboard")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingQuickAdd = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingQuickAdd) {
+                AddFoodEntryView(date: today)
+            }
         }
         .onAppear {
             guard (try? modelContext.fetch(FetchDescriptor<UserSettings>()))?.isEmpty == true else { return }
@@ -31,9 +49,11 @@ struct DashboardView: View {
 private struct DashboardContentView: View {
     @Query private var todayLogs: [DailyLog]
     @Query private var allSettings: [UserSettings]
+    let onNavigateToLog: () -> Void
 
-    init(today: Date) {
+    init(today: Date, onNavigateToLog: @escaping () -> Void) {
         _todayLogs = Query(filter: #Predicate<DailyLog> { $0.date == today })
+        self.onNavigateToLog = onNavigateToLog
     }
 
     private var entries: [FoodEntry] { todayLogs.first?.entries ?? [] }
@@ -46,19 +66,56 @@ private struct DashboardContentView: View {
 
     var body: some View {
         ScrollView {
-            if let settings {
-                DashboardCard(
-                    totalCalories: totalCalories,
-                    totalProtein:  totalProtein,
-                    totalCarbs:    totalCarbs,
-                    totalFat:      totalFat,
-                    settings:      settings
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+            VStack(spacing: 16) {
+                GreetingHeader()
+                    .padding(.horizontal, 16)
+
+                if let settings {
+                    DashboardCard(
+                        totalCalories: totalCalories,
+                        totalProtein:  totalProtein,
+                        totalCarbs:    totalCarbs,
+                        totalFat:      totalFat,
+                        settings:      settings
+                    )
+                    .padding(.horizontal, 16)
+                }
+
+                TodaysMealsCard(entries: entries, onTap: onNavigateToLog)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
             }
+            .padding(.top, 12)
         }
         .background(Color(uiColor: .systemGroupedBackground))
+    }
+}
+
+// MARK: - Greeting Header
+
+private struct GreetingHeader: View {
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12:  return "Good morning"
+        case 12..<17: return "Good afternoon"
+        default:      return "Good evening"
+        }
+    }
+
+    private var dateString: String {
+        Date().formatted(.dateTime.weekday(.wide).month(.wide).day())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(greeting)
+                .font(.system(.title2, design: .rounded, weight: .bold))
+            Text(dateString)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -111,6 +168,71 @@ private struct DashboardCard: View {
         .background(
             Color(red: 0.08, green: 0.08, blue: 0.12),
             in: RoundedRectangle(cornerRadius: 24)
+        )
+    }
+}
+
+// MARK: - Today's Meals Card
+
+private struct TodaysMealsCard: View {
+    let entries: [FoodEntry]
+    let onTap: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header row — tapping anywhere navigates to Log Food
+            HStack {
+                Text("Today's Meals")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+
+            Divider()
+                .overlay(Color.white.opacity(0.08))
+
+            ForEach(MealType.allCases, id: \.self) { meal in
+                let mealEntries = entries.filter { $0.mealType == meal }
+                let count = mealEntries.count
+                let cals  = mealEntries.reduce(0) { $0 + $1.calories }
+
+                HStack {
+                    Text(meal.rawValue)
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Spacer()
+                    if count > 0 {
+                        Text("\(count) item\(count == 1 ? "" : "s") · \(cals.formatted(.number.precision(.fractionLength(0)))) kcal")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.55))
+                    } else {
+                        Text("Nothing logged")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.25))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+                .onTapGesture { onTap() }
+
+                if meal != MealType.allCases.last {
+                    Divider()
+                        .overlay(Color.white.opacity(0.05))
+                        .padding(.leading, 16)
+                }
+            }
+        }
+        .background(
+            Color(red: 0.08, green: 0.08, blue: 0.12),
+            in: RoundedRectangle(cornerRadius: 20)
         )
     }
 }
@@ -210,6 +332,6 @@ private struct ProgressRing: View {
 // MARK: - Preview
 
 #Preview {
-    DashboardView()
+    DashboardView(selectedTab: .constant(0))
         .modelContainer(for: [FoodEntry.self, DailyLog.self, UserSettings.self], inMemory: true)
 }
