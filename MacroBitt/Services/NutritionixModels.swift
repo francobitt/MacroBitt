@@ -5,34 +5,33 @@
 
 import Foundation
 
-// MARK: - Public domain types
+// MARK: - Public Domain Types
 
-struct NutritionixFoodItem: Sendable {
+struct NutritionixFoodItem {
     let name: String
     let calories: Double
     let protein: Double
     let carbs: Double
     let fat: Double
-    let servingQuantity: Double    // e.g. 1.0
-    let servingUnit: String        // e.g. "cup"
-    let servingSize: Double        // weight in grams
+    let servingQuantity: Double       // e.g. 1.0
+    let servingUnit: String           // e.g. "cup"
+    let servingWeightGrams: Double    // gram weight of one serving, e.g. 240.0
     let photoURL: URL?
-    let brandName: String?         // nil for common (unbranded) foods
+    let brandName: String?            // nil for unbranded (common) foods
     let validation: MacroValidator.Result
-    // Note: MacroValidator.Result is a struct of Bool + Double, so it is
-    // implicitly Sendable. If that struct ever gains a non-Sendable field,
-    // this conformance will need to be revisited.
 }
 
-struct NutritionixSuggestion: Sendable {
-    enum Kind: Sendable { case common, branded }
+struct NutritionixSuggestion {
+    // Equatable so tests can use #expect(kind == .common)
+    enum Kind: Equatable { case common, branded }
     let name: String
     let brandName: String?
     let photoURL: URL?
     let kind: Kind
+    let nixItemId: String?   // use with nixItemIdSearch for branded items
 }
 
-enum NutritionixError: Error, LocalizedError, Sendable {
+enum NutritionixError: LocalizedError {
     case invalidCredentials          // HTTP 401
     case rateLimitExceeded           // HTTP 429
     case httpError(statusCode: Int)  // other 4xx / 5xx
@@ -42,76 +41,54 @@ enum NutritionixError: Error, LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidCredentials:        return "Invalid API credentials."
-        case .rateLimitExceeded:         return "Too many requests — please wait a moment."
-        case .httpError(let code):       return "Server error (HTTP \(code))."
-        case .networkFailure(let err):   return err.localizedDescription
-        case .decodingFailure:           return "Unexpected response format."
-        case .noResults:                 return "No results found."
+        case .invalidCredentials:    return "Invalid API credentials."
+        case .rateLimitExceeded:     return "Too many requests — please wait a moment."
+        case .httpError(let code):   return "Server error (HTTP \(code))."
+        case .networkFailure(let e): return e.localizedDescription
+        case .decodingFailure:       return "Unexpected response from server."
+        case .noResults:             return "No results found."
         }
     }
 }
 
-extension NutritionixError: Equatable {
-    static func == (lhs: NutritionixError, rhs: NutritionixError) -> Bool {
-        switch (lhs, rhs) {
-        case (.invalidCredentials, .invalidCredentials),
-             (.rateLimitExceeded, .rateLimitExceeded),
-             (.noResults, .noResults),
-             (.decodingFailure, .decodingFailure):
-            return true
-        case (.httpError(let a), .httpError(let b)):
-            return a == b
-        case (.networkFailure(let a), .networkFailure(let b)):
-            return a == b
-        default:
-            return false
-        }
-    }
-}
+// MARK: - Internal Codable Types
+// Decode raw Nutritionix JSON. Not exposed outside this module.
 
-// MARK: - Internal Codable types (Nutritionix wire format)
-// These are not exposed through the protocol. Field names mirror Nutritionix's
-// snake_case JSON directly to avoid CodingKeys boilerplate.
-
-struct NXPhoto: Codable {
-    let thumb: String?
-}
-
-/// Shared food shape returned by both /v2/natural/nutrients and /v2/search/item
-struct NXFood: Codable {
-    let food_name: String?
+struct NXFood: Decodable {
+    let food_name: String           // non-optional — required field; absence throws DecodingError
     let brand_name: String?
-    let serving_qty: Double?
-    let serving_unit: String?
+    let serving_qty: Double?        // optional defensive; always present for real API responses
+    let serving_unit: String
     let serving_weight_grams: Double?
     let nf_calories: Double?
     let nf_protein: Double?
     let nf_total_carbohydrate: Double?
     let nf_total_fat: Double?
     let photo: NXPhoto?
+    let nix_item_id: String?
 }
 
-/// Response from POST /v2/natural/nutrients
-struct NXNaturalResponse: Codable {
+struct NXPhoto: Decodable {
+    let thumb: String?
+}
+
+// POST /v2/natural/nutrients  →  { "foods": [...] }
+struct NXNutrientsResponse: Decodable {
     let foods: [NXFood]
 }
 
-/// Response from GET /v2/search/item?upc=
-struct NXSearchItemResponse: Codable {
-    let foods: [NXFood]
+// GET /v2/search/item  →  { "foods": [...] }
+typealias NXSearchItemResponse = NXNutrientsResponse
+
+// GET /v2/search/instant  →  { "common": [...], "branded": [...] }
+struct NXSearchInstantResponse: Decodable {
+    let branded: [NXInstantItem]
+    let common: [NXInstantItem]
 }
 
-/// Single autocomplete suggestion from /v2/search/instant
-struct NXInstantItem: Codable {
+struct NXInstantItem: Decodable {
     let food_name: String
     let brand_name: String?
     let photo: NXPhoto?
-}
-
-/// Response from GET /v2/search/instant?query=
-/// Both arrays are optional — Nutritionix omits them when there are no matches.
-struct NXInstantResponse: Codable {
-    let common: [NXInstantItem]?
-    let branded: [NXInstantItem]?
+    let nix_item_id: String?
 }
