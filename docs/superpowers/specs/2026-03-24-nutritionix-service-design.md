@@ -17,7 +17,7 @@ A typed, async/await Swift service that wraps the Nutritionix v2 API. Exposes fo
 | Create (gitignored) | `MacroBitt/Config.swift` | API credentials — `enum Config` with `nutritionixAppID` and `nutritionixAppKey` |
 | Create (committed) | `MacroBitt/Config.example.swift.txt` | Plain-text copy instructions — NOT a `.swift` file so it is never compiled |
 | Create | `MacroBitt/Services/NutritionixModels.swift` | `NutritionixFoodItem`, `NutritionixSuggestion`, `NutritionixError`, internal Codable response types |
-| Create | `MacroBitt/Services/NutritionixService.swift` | `NutritionixServiceProtocol: Sendable` + `NutritionixService: NutritionixServiceProtocol, Sendable` |
+| Create | `MacroBitt/Services/NutritionixService.swift` | `NutritionixServiceProtocol: Sendable` + `NutritionixService: NutritionixServiceProtocol, @unchecked Sendable` |
 | Create | `MacroBittTests/NutritionixServiceTests.swift` | Unit tests: mock-based protocol tests + URLProtocol-stubbed parsing tests |
 | Modify | `.gitignore` | Add `**/Config.swift` entry |
 
@@ -52,6 +52,8 @@ enum Config {
 ```
 **/Config.swift
 ```
+
+The `**/Config.swift` glob matches only files named exactly `Config.swift`. `Config.example.swift.txt` does not match — it is intentionally committed and safe.
 
 ---
 
@@ -166,7 +168,11 @@ struct NXInstantItem: Decodable {
 }
 ```
 
-Fields that are not present in all contexts (e.g. `nf_calories` missing from instant results) are typed as `Optional`. The `parse(_:)` method uses nil-coalescing to 0.0 for missing macro values. Nutritionix `/v2/search/item` always populates macro fields for branded items; nil-coalescing to 0.0 is a defensive fallback only.
+Fields that are not present in all contexts (e.g. `nf_calories` missing from instant results) are typed as `Optional`. The `parse(_:)` method uses nil-coalescing for missing values:
+- Macro fields (`nf_calories`, `nf_protein`, `nf_total_carbohydrate`, `nf_total_fat`) → default `0.0`
+- `serving_weight_grams` → default `0.0` (a defensive fallback; Nutritionix `/v2/search/item` and `/v2/natural/nutrients` always populate this field for real foods)
+
+Nutritionix `/v2/search/item` always populates macro fields for branded items; `0.0` fallbacks are defensive only.
 
 ---
 
@@ -186,7 +192,7 @@ protocol NutritionixServiceProtocol: Sendable {
 - `naturalLanguageSearch` — POSTs `{ "query": query }` to `/v2/natural/nutrients`. Returns one `NutritionixFoodItem` per food detected in the query string.
 - `barcodeSearch` — GETs `/v2/search/item?upc=<upc>`. Returns the first item from the `foods` array (if `foods.count > 1`, additional results are silently dropped — Nutritionix only returns multiple items for ambiguous UPCs, and the first is the best match). Throws `noResults` if `foods` is empty.
 - `nixItemIdSearch` — GETs `/v2/search/item?nix_item_id=<id>`. Same response shape and parsing logic as `barcodeSearch`. Used for resolving branded `NutritionixSuggestion` items from keyword search results. Returns first item or throws `noResults`.
-- `keywordSearch` — GETs `/v2/search/instant?query=<query>`. Returns `[NutritionixSuggestion]` combining both `branded` and `common` result arrays from the response.
+- `keywordSearch` — GETs `/v2/search/instant?query=<query>`. Returns `[NutritionixSuggestion]` by concatenating `common` results first, then `branded` results (common items are typically more relevant for general food queries).
 
 ### 4b. Concrete Implementation
 
@@ -244,7 +250,7 @@ Two test structs in the same file.
 
 ### 5a. MockNutritionixService tests
 
-`MockNutritionixService: NutritionixServiceProtocol` — a struct with injectable return values (or injectable thrown errors). Verifies that protocol callers handle results and errors correctly:
+`MockNutritionixService: NutritionixServiceProtocol` — a `final class` (not a struct; a struct cannot mutate stored injection state through a protocol reference in Swift 6) with stored properties for return values and a thrown error. Verifies that protocol callers handle results and errors correctly:
 
 1. `naturalLanguageSearch` returns caller-supplied items unchanged
 2. `barcodeSearch` throws `noResults` when configured to
@@ -266,7 +272,7 @@ A custom `URLProtocol` subclass (`StubURLProtocol`) intercepts requests and retu
 13. Given valid `/v2/search/instant` fixture JSON → `keywordSearch` returns suggestions with `kind == .branded` for branded entries and `kind == .common` for common entries; branded entries have non-nil `nixItemId`
 14. Given HTTP 429 response (any endpoint) → throws `rateLimitExceeded`
 15. Given HTTP 401 response (any endpoint) → throws `invalidCredentials`
-16. Given response body where `food_name` key is absent from JSON → throws `decodingFailure` (this is the required field; its absence triggers a `DecodingError.keyNotFound` which is wrapped)
+16. Given a `/v2/natural/nutrients` response body where `food_name` is absent from the `foods[0]` object → throws `decodingFailure` (`food_name` is a required non-optional field; its absence triggers `DecodingError.keyNotFound`, which `perform(_:)` wraps as `.decodingFailure`)
 
 Test cases 7–16 use `StubURLProtocol` injected via:
 ```swift
