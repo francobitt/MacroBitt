@@ -18,5 +18,5 @@ DerivedData/
 Pods/
 Podfile.lock
 
-# API credentials — never commit
-MacroBitt/Config.swift
+# API credentials — never commit real keys
+**/Config.swift

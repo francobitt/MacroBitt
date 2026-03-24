@@ -1,0 +1,7 @@
+// Copy this file to Config.swift and fill in your Nutritionix credentials.
+// Get keys at: https://developer.nutritionix.com
+
+enum Config {
+    static let nutritionixAppID  = "<your-nutritionix-app-id>"
+    static let nutritionixAppKey = "<your-nutritionix-app-key>"
+}
