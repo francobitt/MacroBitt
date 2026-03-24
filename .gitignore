@@ -17,3 +17,6 @@ DerivedData/
 # CocoaPods (if ever added)
 Pods/
 Podfile.lock
+
+# API credentials — never commit
+MacroBitt/Config.swift
