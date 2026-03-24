@@ -6,24 +6,14 @@
 //
 
 import SwiftUI
-import SwiftData
+
+// ModelContainer will be configured here once @Model types are defined (Phase 1+).
 
 @main
 struct MacroBittApp: App {
-    let modelContainer: ModelContainer = {
-        let schema = Schema([])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        do {
-            return try ModelContainer(for: schema, configurations: [config])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
-
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(modelContainer)
     }
 }
