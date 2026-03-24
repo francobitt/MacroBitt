@@ -70,14 +70,16 @@ struct NutritionixFoodItem {
     let protein: Double
     let carbs: Double
     let fat: Double
-    let servingQuantity: Double    // e.g. 1.0
-    let servingUnit: String        // e.g. "cup"
-    let servingSize: Double        // weight in grams, e.g. 240.0
+    let servingQuantity: Double       // e.g. 1.0
+    let servingUnit: String           // e.g. "cup"
+    let servingWeightGrams: Double    // gram weight of one serving, e.g. 240.0
     let photoURL: URL?
-    let brandName: String?         // nil for common (unbranded) foods
+    let brandName: String?            // nil for common (unbranded) foods
     let validation: MacroValidator.Result
 }
 ```
+
+**`servingWeightGrams` vs `FoodEntry.servingSize`:** `FoodEntry.servingSize` is a `String?` human-readable label (e.g. `"1 cup"`). `NutritionixFoodItem.servingWeightGrams` is a numeric gram weight. Callers mapping to `FoodEntry` should populate `FoodEntry.servingSize` as `"\(Int(item.servingQuantity)) \(item.servingUnit)"` (e.g. `"1 cup"`) — not with the gram value.
 
 **MacroValidator integration:** Inside the private `parse(_:) -> NutritionixFoodItem` method, after extracting macros from the Nutritionix response:
 
@@ -131,7 +133,7 @@ Internal structs prefixed `NX` decode the raw Nutritionix JSON and are not expos
 struct NXFood: Decodable {
     let food_name: String
     let brand_name: String?
-    let serving_qty: Double
+    let serving_qty: Double?       // optional — absent in some edge-case responses; defaults to 0.0
     let serving_unit: String
     let serving_weight_grams: Double?
     let nf_calories: Double?
@@ -170,7 +172,8 @@ struct NXInstantItem: Decodable {
 
 Fields that are not present in all contexts (e.g. `nf_calories` missing from instant results) are typed as `Optional`. The `parse(_:)` method uses nil-coalescing for missing values:
 - Macro fields (`nf_calories`, `nf_protein`, `nf_total_carbohydrate`, `nf_total_fat`) → default `0.0`
-- `serving_weight_grams` → default `0.0` (a defensive fallback; Nutritionix `/v2/search/item` and `/v2/natural/nutrients` always populate this field for real foods)
+- `serving_qty` → default `0.0` (optional; always present in practice for real API responses)
+- `serving_weight_grams` → default `0.0` (a defensive fallback; Nutritionix always populates this for real foods)
 
 Nutritionix `/v2/search/item` always populates macro fields for branded items; `0.0` fallbacks are defensive only.
 
@@ -280,6 +283,25 @@ let config = URLSessionConfiguration.ephemeral
 config.protocolClasses = [StubURLProtocol.self]
 let session = URLSession(configuration: config)
 let service = NutritionixService(session: session, appID: "test", appKey: "test")
+```
+
+**`StubURLProtocol` routing:** Use a single `static var stubbedResponse: (Data, URLResponse)?` property. Each `@Test` function sets this property before calling the service method, then clears it in a `defer` block. This is the standard Swift Testing pattern for stubbing `URLSession` — no URL-keyed routing needed because each test drives exactly one request.
+
+```swift
+final class StubURLProtocol: URLProtocol {
+    static var stubbedResponse: (Data, URLResponse)?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        if let (data, response) = StubURLProtocol.stubbedResponse {
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
 ```
 
 ---
