@@ -6,7 +6,7 @@
 
 ## Overview
 
-A typed, async/await Swift service that wraps the Nutritionix v2 API. Exposes three search methods (natural language, barcode, keyword autocomplete), parses all results into a common domain struct, and runs every result through `MacroValidator` before returning to callers. Backed by a protocol for testability.
+A typed, async/await Swift service that wraps the Nutritionix v2 API. Exposes four search methods (natural language, barcode, Nutritionix item ID, keyword autocomplete), parses all results into a common domain struct, and runs every result through `MacroValidator` before returning to callers. Backed by a `Sendable` protocol for testability in Swift 6 strict-concurrency environments.
 
 ---
 
@@ -15,17 +15,17 @@ A typed, async/await Swift service that wraps the Nutritionix v2 API. Exposes th
 | Action | Path | Responsibility |
 |--------|------|----------------|
 | Create (gitignored) | `MacroBitt/Config.swift` | API credentials — `enum Config` with `nutritionixAppID` and `nutritionixAppKey` |
-| Create (committed) | `MacroBitt/Config.example.swift` | Placeholder copy of `Config.swift` checked into source control |
+| Create (committed) | `MacroBitt/Config.example.swift.txt` | Plain-text copy instructions — NOT a `.swift` file so it is never compiled |
 | Create | `MacroBitt/Services/NutritionixModels.swift` | `NutritionixFoodItem`, `NutritionixSuggestion`, `NutritionixError`, internal Codable response types |
-| Create | `MacroBitt/Services/NutritionixService.swift` | `NutritionixServiceProtocol` + `NutritionixService: NutritionixServiceProtocol` |
-| Create | `MacroBittTests/NutritionixServiceTests.swift` | Unit tests using `MockNutritionixService` — no real network calls |
-| Modify | `.gitignore` | Add `MacroBitt/Config.swift` entry |
+| Create | `MacroBitt/Services/NutritionixService.swift` | `NutritionixServiceProtocol: Sendable` + `NutritionixService: NutritionixServiceProtocol, Sendable` |
+| Create | `MacroBittTests/NutritionixServiceTests.swift` | Unit tests: mock-based protocol tests + URLProtocol-stubbed parsing tests |
+| Modify | `.gitignore` | Add `**/Config.swift` entry |
 
 ---
 
 ## 2. Credentials — Config.swift
 
-`Config.swift` is a gitignored Swift file containing a plain `enum` with two static string properties. The build fails at compile time if the file is absent, preventing silent misconfiguration.
+`Config.swift` is a gitignored Swift file containing a plain `enum` with two static string properties. The build fails at compile time if the file is absent, preventing silent misconfiguration. `Config.example.swift.txt` is a plain-text file (`.txt` extension — never compiled, so no duplicate-type error), giving new developers copy-paste setup instructions.
 
 **`Config.swift`** (gitignored, never committed):
 ```swift
@@ -37,24 +37,21 @@ enum Config {
 }
 ```
 
-**`Config.example.swift`** (committed):
-```swift
-// MacroBitt/Config.example.swift
+**`Config.example.swift.txt`** (committed — `.txt` so it is not compiled):
+```
 // Copy this file to Config.swift and fill in your Nutritionix credentials.
 // Get keys at: https://developer.nutritionix.com
+
 enum Config {
     static let nutritionixAppID  = "<your-nutritionix-app-id>"
     static let nutritionixAppKey = "<your-nutritionix-app-key>"
 }
 ```
 
-`.gitignore` addition:
+**`.gitignore` addition** (repo-root-relative glob, robust to directory moves):
 ```
-# API credentials — never commit
-MacroBitt/Config.swift
+**/Config.swift
 ```
-
-No `Info.plist` changes and no Xcode build settings are needed.
 
 ---
 
@@ -80,7 +77,7 @@ struct NutritionixFoodItem {
 }
 ```
 
-**MacroValidator integration:** Inside the private `parse(_:) -> NutritionixFoodItem` method, after extracting macros from the Nutritionix response, call:
+**MacroValidator integration:** Inside the private `parse(_:) -> NutritionixFoodItem` method, after extracting macros from the Nutritionix response:
 
 ```swift
 let validation = MacroValidator.validate(
@@ -91,7 +88,7 @@ Store the result on `NutritionixFoodItem.validation`. Callers read `item.validat
 
 ### 3b. NutritionixSuggestion
 
-Lightweight struct returned by `keywordSearch`. Contains no nutrition data. The caller passes `suggestion.name` to `naturalLanguageSearch` to retrieve full nutrition when the user selects an item.
+Lightweight struct returned by `keywordSearch`. Contains no nutrition data.
 
 ```swift
 struct NutritionixSuggestion {
@@ -100,8 +97,13 @@ struct NutritionixSuggestion {
     let brandName: String?
     let photoURL: URL?
     let kind: Kind
+    let nixItemId: String?   // populated for branded items from nix_item_id field
 }
 ```
+
+**Two-step resolution:**
+- For `kind == .common`: pass `suggestion.name` to `naturalLanguageSearch(_:)` to fetch full nutrition.
+- For `kind == .branded`: pass `suggestion.nixItemId` (if non-nil) to `nixItemIdSearch(id:)`. Passing a branded name to `naturalLanguageSearch` is unreliable — the NLP endpoint may resolve to a different product. `barcodeSearch` is semantically wrong here (it takes a UPC, not a Nutritionix item ID); use `nixItemIdSearch` instead.
 
 ### 3c. NutritionixError
 
@@ -118,22 +120,53 @@ enum NutritionixError: LocalizedError {
 
 `rateLimitExceeded` is a first-class case so callers can show a targeted message ("Too many searches — wait a moment") rather than a generic error alert.
 
-### 3d. Internal Codable types
+### 3d. Internal Codable Types
 
-Internal structs prefixed `NX` decode the raw Nutritionix JSON and are not exposed outside `NutritionixModels.swift`. Key fields mapped from the API:
+Internal structs prefixed `NX` decode the raw Nutritionix JSON and are not exposed outside `NutritionixModels.swift`.
 
-| Nutritionix field | Maps to |
-|---|---|
-| `food_name` | `name` |
-| `nf_calories` | `calories` |
-| `nf_protein` | `protein` |
-| `nf_total_carbohydrate` | `carbs` |
-| `nf_total_fat` | `fat` |
-| `serving_qty` | `servingQuantity` |
-| `serving_unit` | `servingUnit` |
-| `serving_weight_grams` | `servingSize` |
-| `photo.thumb` | `photoURL` |
-| `brand_name` | `brandName` |
+```swift
+// Shared food struct — used by both /natural/nutrients and /search/item responses
+struct NXFood: Decodable {
+    let food_name: String
+    let brand_name: String?
+    let serving_qty: Double
+    let serving_unit: String
+    let serving_weight_grams: Double?
+    let nf_calories: Double?
+    let nf_protein: Double?
+    let nf_total_carbohydrate: Double?
+    let nf_total_fat: Double?
+    let photo: NXPhoto?
+    let nix_item_id: String?
+}
+
+struct NXPhoto: Decodable {
+    let thumb: String?
+}
+
+// POST /v2/natural/nutrients  →  { "foods": [NXFood] }
+struct NXNutrientsResponse: Decodable {
+    let foods: [NXFood]
+}
+
+// GET /v2/search/item  →  { "foods": [NXFood] }
+typealias NXSearchItemResponse = NXNutrientsResponse
+
+// GET /v2/search/instant  →  { "branded": [NXInstantItem], "common": [NXInstantItem] }
+struct NXSearchInstantResponse: Decodable {
+    let branded: [NXInstantItem]
+    let common: [NXInstantItem]
+}
+
+struct NXInstantItem: Decodable {
+    let food_name: String
+    let brand_name: String?
+    let photo: NXPhoto?
+    let nix_item_id: String?
+}
+```
+
+Fields that are not present in all contexts (e.g. `nf_calories` missing from instant results) are typed as `Optional`. The `parse(_:)` method uses nil-coalescing to 0.0 for missing macro values. Nutritionix `/v2/search/item` always populates macro fields for branded items; nil-coalescing to 0.0 is a defensive fallback only.
 
 ---
 
@@ -142,21 +175,23 @@ Internal structs prefixed `NX` decode the raw Nutritionix JSON and are not expos
 ### 4a. Protocol
 
 ```swift
-protocol NutritionixServiceProtocol {
+protocol NutritionixServiceProtocol: Sendable {
     func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem]
     func barcodeSearch(upc: String) async throws -> NutritionixFoodItem
+    func nixItemIdSearch(id: String) async throws -> NutritionixFoodItem
     func keywordSearch(query: String) async throws -> [NutritionixSuggestion]
 }
 ```
 
 - `naturalLanguageSearch` — POSTs `{ "query": query }` to `/v2/natural/nutrients`. Returns one `NutritionixFoodItem` per food detected in the query string.
-- `barcodeSearch` — GETs `/v2/search/item?upc=<upc>`. Returns exactly one item or throws `noResults`.
+- `barcodeSearch` — GETs `/v2/search/item?upc=<upc>`. Returns the first item from the `foods` array (if `foods.count > 1`, additional results are silently dropped — Nutritionix only returns multiple items for ambiguous UPCs, and the first is the best match). Throws `noResults` if `foods` is empty.
+- `nixItemIdSearch` — GETs `/v2/search/item?nix_item_id=<id>`. Same response shape and parsing logic as `barcodeSearch`. Used for resolving branded `NutritionixSuggestion` items from keyword search results. Returns first item or throws `noResults`.
 - `keywordSearch` — GETs `/v2/search/instant?query=<query>`. Returns `[NutritionixSuggestion]` combining both `branded` and `common` result arrays from the response.
 
 ### 4b. Concrete Implementation
 
 ```swift
-final class NutritionixService: NutritionixServiceProtocol {
+final class NutritionixService: NutritionixServiceProtocol, @unchecked Sendable {
     private let session: URLSession
     private let appID: String
     private let appKey: String
@@ -173,45 +208,73 @@ final class NutritionixService: NutritionixServiceProtocol {
 }
 ```
 
-**`session` is injectable** so tests can pass a `URLProtocol`-stubbed session. `appID`/`appKey` default to `Config` values but are overridable.
+`session` is injectable so tests can pass a `URLProtocol`-stubbed session without hitting the network.
 
 ### 4c. Private Helpers
 
-**`authorizedRequest(url:method:body:) -> URLRequest`**
-Constructs a `URLRequest` and attaches three headers to every outbound call:
+**`authorizedRequest(url: URL, method: String, body: Data?) -> URLRequest`**
+
+Constructs a `URLRequest`, sets `httpMethod` to `method`, sets `httpBody` to `body`, and attaches four headers:
 - `x-app-id: <appID>`
 - `x-app-key: <appKey>`
-- `Content-Type: application/json` (on POST requests)
+- `x-remote-user-id: "0"` — required by all Nutritionix v2 endpoints; `"0"` is the conventional anonymous value for development
+- `Content-Type: application/json` — added iff `body != nil`
 
 **`perform<T: Decodable>(_ request: URLRequest) async throws -> T`**
+
 Calls `session.data(for:)`, checks the HTTP status code via `mapStatusCode(_:)`, decodes the response body as `T`, and wraps errors:
 - `URLError` → `NutritionixError.networkFailure`
 - `DecodingError` → `NutritionixError.decodingFailure`
 
 **`mapStatusCode(_ response: HTTPURLResponse) throws`**
+- 200–299 → no throw
 - 401 → `.invalidCredentials`
 - 429 → `.rateLimitExceeded`
-- 200–299 → no throw
 - All other codes → `.httpError(statusCode:)`
 
 **`parse(_ nxFood: NXFood) -> NutritionixFoodItem`**
-Maps one internal `NXFood` response struct to a `NutritionixFoodItem`, calling `MacroValidator.validate()` in the process.
+
+Maps one `NXFood` to a `NutritionixFoodItem`. Missing macro values default to `0.0`. Calls `MacroValidator.validate()` and stores the result.
 
 ---
 
 ## 5. Tests (`NutritionixServiceTests.swift`)
 
-Tests use `MockNutritionixService: NutritionixServiceProtocol` — a simple struct with injectable return values and no network I/O.
+Two test structs in the same file.
 
-Test cases:
-1. `naturalLanguageSearch` returns correctly parsed items
-2. `naturalLanguageSearch` attaches `MacroValidator.Result` to each item
-3. `barcodeSearch` returns single item for valid UPC
-4. `barcodeSearch` throws `noResults` for empty response
-5. `keywordSearch` returns `NutritionixSuggestion` array with correct `kind`
-6. `rateLimitExceeded` error is thrown for HTTP 429
-7. `invalidCredentials` error is thrown for HTTP 401
-8. `decodingFailure` error is thrown for malformed JSON
+### 5a. MockNutritionixService tests
+
+`MockNutritionixService: NutritionixServiceProtocol` — a struct with injectable return values (or injectable thrown errors). Verifies that protocol callers handle results and errors correctly:
+
+1. `naturalLanguageSearch` returns caller-supplied items unchanged
+2. `barcodeSearch` throws `noResults` when configured to
+3. `keywordSearch` returns caller-supplied suggestions with correct `kind`
+4. `rateLimitExceeded` propagates to caller
+5. `invalidCredentials` propagates to caller
+6. Given a stubbed item with `validation.isValid == false` → caller receives an item whose `validation.isValid` is `false` (validates that the `validation` field survives the protocol boundary)
+
+### 5b. NutritionixServiceParsingTests — URLProtocol stub
+
+A custom `URLProtocol` subclass (`StubURLProtocol`) intercepts requests and returns fixture JSON (inline strings defined in the test file). Tests exercise the real `NutritionixService` parsing path:
+
+7. Given valid `/v2/natural/nutrients` fixture JSON → returns `NutritionixFoodItem` with correct `name`, `calories`, `protein`, `carbs`, `fat`
+8. Given fixture JSON for an item where macros match calories (within 5 kcal) → `item.validation.isValid == true`
+9. Given fixture JSON for an item where calories diverge from macros by >5 kcal → `item.validation.isValid == false`
+10. Given valid `/v2/search/item` fixture JSON (UPC lookup) → `barcodeSearch` returns single item with correct fields
+11. Given valid `/v2/search/item` fixture JSON (nix_item_id lookup) → `nixItemIdSearch` returns single item
+12. Given `/v2/search/item` response with empty `foods` array → throws `noResults`
+13. Given valid `/v2/search/instant` fixture JSON → `keywordSearch` returns suggestions with `kind == .branded` for branded entries and `kind == .common` for common entries; branded entries have non-nil `nixItemId`
+14. Given HTTP 429 response (any endpoint) → throws `rateLimitExceeded`
+15. Given HTTP 401 response (any endpoint) → throws `invalidCredentials`
+16. Given response body where `food_name` key is absent from JSON → throws `decodingFailure` (this is the required field; its absence triggers a `DecodingError.keyNotFound` which is wrapped)
+
+Test cases 7–16 use `StubURLProtocol` injected via:
+```swift
+let config = URLSessionConfiguration.ephemeral
+config.protocolClasses = [StubURLProtocol.self]
+let session = URLSession(configuration: config)
+let service = NutritionixService(session: session, appID: "test", appKey: "test")
+```
 
 ---
 
@@ -219,13 +282,14 @@ Test cases:
 
 Base URL: `https://trackapi.nutritionix.com`
 
-| Method | Endpoint | Auth | Notes |
+| Method | Endpoint | Auth headers | Notes |
 |--------|----------|------|-------|
-| POST | `/v2/natural/nutrients` | headers | Body: `{ "query": "2 eggs and toast" }` |
-| GET | `/v2/search/item?upc=<code>` | headers | Branded items only |
-| GET | `/v2/search/instant?query=<term>` | headers | Returns `branded` + `common` arrays |
+| POST | `/v2/natural/nutrients` | `x-app-id`, `x-app-key`, `x-remote-user-id` | Body: `{ "query": "2 eggs and toast" }` |
+| GET | `/v2/search/item?upc=<code>` | `x-app-id`, `x-app-key`, `x-remote-user-id` | Branded items by UPC |
+| GET | `/v2/search/item?nix_item_id=<id>` | `x-app-id`, `x-app-key`, `x-remote-user-id` | Branded item by Nutritionix item ID |
+| GET | `/v2/search/instant?query=<term>` | `x-app-id`, `x-app-key`, `x-remote-user-id` | Returns `branded` + `common` arrays |
 
-All requests require `x-app-id` and `x-app-key` headers.
+All requests require `x-app-id`, `x-app-key`, and `x-remote-user-id: "0"` headers.
 
 ---
 
@@ -233,8 +297,10 @@ All requests require `x-app-id` and `x-app-key` headers.
 
 1. Build succeeds with `Config.swift` present
 2. Build fails with `Config.swift` absent (missing type `Config`)
-3. `naturalLanguageSearch("2 eggs and toast")` returns 2 items with correct macros
-4. Each returned item has `validation` populated (not nil)
+3. `**/Config.swift` in `.gitignore` keeps the file out of commits even after directory moves
+4. `naturalLanguageSearch("2 eggs and toast")` returns 2 items with correct macros and populated `validation`
 5. `barcodeSearch("049000028911")` returns a single branded item
-6. `keywordSearch("chicken")` returns suggestions without triggering a full nutrition fetch
-7. Removing `Config.swift` from `.gitignore` keeps it out of commits
+6. `nixItemIdSearch("some_nix_id")` returns a single branded item (same parsing path as `barcodeSearch`)
+7. `keywordSearch("chicken")` returns suggestions without triggering a nutrition fetch; branded results have non-nil `nixItemId`
+8. All 16 unit tests pass with no real network calls
+9. HTTP 429 → `rateLimitExceeded`; HTTP 401 → `invalidCredentials`
