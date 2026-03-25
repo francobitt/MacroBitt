@@ -154,7 +154,7 @@ private final class _PreviewUIView: UIView {
 
 // MARK: - Coordinator
 
-final class BarcodeScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+private final class BarcodeScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
     var session: AVCaptureSession?
     private let onDetected: (String) -> Void
 
