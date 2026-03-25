@@ -248,7 +248,9 @@ struct MockNutritionixServiceTests {
 }
 
 // MARK: - Group B: Real Parsing Tests via StubURLProtocol (tests 7–16)
+// .serialized prevents parallel execution — StubURLProtocol.stubbedResponse is shared mutable state
 
+@Suite(.serialized)
 struct NutritionixServiceParsingTests {
 
     // 7. naturalLanguageSearch parses all fields correctly
