@@ -10,6 +10,7 @@ import SwiftData
 
 struct FoodLogView: View {
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
+    @State private var showingAddOptions = false
     @State private var showingAddEntry = false
     @State private var showingFoodSearch = false
     @State private var showingBarcodeScanner = false
@@ -33,21 +34,7 @@ struct FoodLogView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        showingFoodSearch = true
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingBarcodeScanner = true
-                    } label: {
-                        Image(systemName: "barcode.viewfinder")
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddEntry = true
+                        showingAddOptions = true
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -64,6 +51,11 @@ struct FoodLogView: View {
             }
             .sheet(isPresented: $showingBarcodeScanner) {
                 BarcodeScannerView(service: NutritionixService(), targetDate: selectedDate)
+            }
+            .confirmationDialog("Log Food", isPresented: $showingAddOptions, titleVisibility: .visible) {
+                Button("Search Food")  { showingFoodSearch = true }
+                Button("Scan Barcode") { showingBarcodeScanner = true }
+                Button("Manual Entry") { showingAddEntry = true }
             }
         }
     }
