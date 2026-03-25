@@ -11,6 +11,7 @@ import SwiftData
 struct FoodLogView: View {
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var showingAddEntry = false
+    @State private var showingFoodSearch = false
     @State private var entryToEdit: FoodEntry?
 
     var body: some View {
@@ -31,6 +32,13 @@ struct FoodLogView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
+                        showingFoodSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
                         showingAddEntry = true
                     } label: {
                         Image(systemName: "plus")
@@ -42,6 +50,9 @@ struct FoodLogView: View {
             }
             .sheet(item: $entryToEdit) { entry in
                 AddFoodEntryView(editing: entry)
+            }
+            .sheet(isPresented: $showingFoodSearch) {
+                FoodSearchView(targetDate: selectedDate, service: NutritionixService())
             }
         }
     }

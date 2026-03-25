@@ -59,6 +59,21 @@ struct AddFoodEntryView: View {
         _mealType     = State(initialValue: entry.mealType)
     }
 
+    // MARK: - Init (Nutritionix)
+
+    init(nutritionixItem item: NutritionixFoodItem, date: Date = Date()) {
+        self.editingEntry = nil
+        self.targetDate   = Calendar.current.startOfDay(for: date)
+        _name         = State(initialValue: item.name)
+        _caloriesText = State(initialValue: Self.format(item.calories))
+        _proteinText  = State(initialValue: Self.format(item.protein))
+        _carbsText    = State(initialValue: Self.format(item.carbs))
+        _fatText      = State(initialValue: Self.format(item.fat))
+        _servingSize  = State(initialValue: "\(Self.format(item.servingQuantity)) \(item.servingUnit)")
+        _servingCount = State(initialValue: 1.0)
+        _mealType     = State(initialValue: MealType.defaultForCurrentTime())
+    }
+
     // MARK: - Computed
 
     private var calories: Double { Double(caloriesText) ?? 0 }

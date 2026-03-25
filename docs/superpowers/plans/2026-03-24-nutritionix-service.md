@@ -1,12 +1,12 @@
-# NutritionixService Implementation Plan
+# Nutritionix Service Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a fully-tested Nutritionix v2 API service layer with credential management, three search methods, a common parsed result type, and mandatory MacroValidator integration on every result.
+**Goal:** Implement a type-safe async/await Nutritionix v2 API client with natural language search, barcode lookup, item ID lookup, and keyword autocomplete — with MacroValidator integration and 16 unit tests covering parsing, validation, and error mapping.
 
-**Architecture:** `NutritionixServiceProtocol` (Sendable) + concrete `NutritionixService` (URLSession-injectable, `@unchecked Sendable`) live in `Services/`. All domain types and internal Codable structs live in `NutritionixModels.swift`. Tests use a `URLProtocol` stub for the concrete class and a `MockNutritionixService` for protocol-level tests — no real network calls.
+**Architecture:** `NutritionixModels.swift` holds all public domain types and internal Codable types. `NutritionixService.swift` holds the `NutritionixServiceProtocol: Sendable` protocol and the `NutritionixService` concrete class. Tests use `StubURLProtocol` (real parsing path) and `MockNutritionixService` (protocol-level) — no real network calls.
 
-**Tech Stack:** Swift 6, async/await, Foundation (URLSession, JSONDecoder), Swift Testing (`import Testing`, `@Test`, `#expect`)
+**Tech Stack:** Swift 6, URLSession async/await, Swift Testing (`import Testing`, `#expect`, `#require`)
 
 ---
 
@@ -14,12 +14,12 @@
 
 | Action | Path | Responsibility |
 |--------|------|----------------|
-| Create (gitignored) | `MacroBitt/Config.swift` | Real API credentials |
-| Create (checked in) | `Config.example.swift` (repo root) | Credential template |
-| Modify | `.gitignore` | Add `MacroBitt/Config.swift` |
-| Create | `MacroBitt/Services/NutritionixModels.swift` | Domain types + internal Codable structs |
+| Create (gitignored) | `MacroBitt/Config.swift` | API credentials |
+| Create | `MacroBitt/Config.example.swift.txt` | Setup instructions (`.txt` = never compiled) |
+| Create | `MacroBitt/Services/NutritionixModels.swift` | All domain + internal Codable types |
 | Create | `MacroBitt/Services/NutritionixService.swift` | Protocol + concrete service |
-| Create | `MacroBittTests/NutritionixServiceTests.swift` | 14 unit tests (5 Group A mock + 9 Group B URLStub) |
+| Create | `MacroBittTests/NutritionixServiceTests.swift` | 16 unit tests |
+| Modify | `.gitignore` | Add `**/Config.swift` |
 
 ---
 
@@ -27,51 +27,46 @@
 
 **Files:**
 - Create: `MacroBitt/Config.swift`
-- Create: `Config.example.swift` (repo root)
+- Create: `MacroBitt/Config.example.swift.txt`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Create `MacroBitt/Config.swift`**
+- [ ] **Step 1: Create Config.swift**
 
 ```swift
-//
-//  Config.swift
-//  MacroBitt
-//
-//  DO NOT COMMIT — fill in real credentials from your Nutritionix dashboard.
-//
-
+// MacroBitt/Config.swift
+// DO NOT COMMIT — fill in your real Nutritionix keys from developer.nutritionix.com
 enum Config {
-    static let nutritionixAppID  = "your-app-id-here"
-    static let nutritionixAppKey = "your-app-key-here"
+    static let nutritionixAppID  = "YOUR_APP_ID"
+    static let nutritionixAppKey = "YOUR_APP_KEY"
 }
 ```
 
-- [ ] **Step 2: Create `Config.example.swift` at the repo root (NOT inside `MacroBitt/`)**
+- [ ] **Step 2: Create Config.example.swift.txt**
 
-This file is a template only. It must live at the repo root so it is never picked up by the Xcode build target (which uses `PBXFileSystemSynchronizedRootGroup` on `MacroBitt/`). If it were inside `MacroBitt/`, both files would declare `enum Config` and cause a duplicate-symbol compile error.
+File: `MacroBitt/Config.example.swift.txt`
+(`.txt` extension — Xcode never compiles this file, so it can coexist with `Config.swift` without a duplicate-type error)
 
-```swift
-// Config.example.swift — repo root
-// Copy to MacroBitt/Config.swift and fill in real credentials.
-// NEVER commit MacroBitt/Config.swift.
-//
-// Get credentials at: https://developer.nutritionix.com
+```
+// Copy this file to Config.swift and fill in your Nutritionix credentials.
+// Get keys at: https://developer.nutritionix.com
+
 enum Config {
-    static let nutritionixAppID  = "REPLACE_ME"
-    static let nutritionixAppKey = "REPLACE_ME"
+    static let nutritionixAppID  = "<your-nutritionix-app-id>"
+    static let nutritionixAppKey = "<your-nutritionix-app-key>"
 }
 ```
 
-- [ ] **Step 3: Add `MacroBitt/Config.swift` to `.gitignore`**
+- [ ] **Step 3: Add to .gitignore**
 
-Append to the existing `.gitignore`:
-
+Append to `.gitignore`:
 ```
-# API credentials — never commit
-MacroBitt/Config.swift
+# API credentials — never commit real keys
+**/Config.swift
 ```
 
-- [ ] **Step 4: Build to verify `Config` is found**
+`**/Config.swift` matches only files named exactly `Config.swift`. `Config.example.swift.txt` does NOT match.
+
+- [ ] **Step 4: Build to verify**
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -83,19 +78,12 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 5: Verify `Config.swift` is gitignored**
+- [ ] **Step 5: Commit**
 
 ```bash
-git status
-```
-
-Expected: `Config.swift` does NOT appear in the output. `Config.example.swift` DOES appear as an untracked file.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add .gitignore Config.example.swift
-git commit -m "chore: add credential scaffolding (Config.example.swift + gitignore rule)"
+git add MacroBitt/Config.example.swift.txt .gitignore
+# Do NOT git add MacroBitt/Config.swift — it is gitignored
+git commit -m "feat: add Config credentials setup with gitignore"
 ```
 
 ---
@@ -105,7 +93,7 @@ git commit -m "chore: add credential scaffolding (Config.example.swift + gitigno
 **Files:**
 - Create: `MacroBitt/Services/NutritionixModels.swift`
 
-- [ ] **Step 1: Create the file**
+- [ ] **Step 1: Create NutritionixModels.swift**
 
 ```swift
 //
@@ -115,34 +103,33 @@ git commit -m "chore: add credential scaffolding (Config.example.swift + gitigno
 
 import Foundation
 
-// MARK: - Public domain types
+// MARK: - Public Domain Types
 
-struct NutritionixFoodItem: Sendable {
+struct NutritionixFoodItem {
     let name: String
     let calories: Double
     let protein: Double
     let carbs: Double
     let fat: Double
-    let servingQuantity: Double    // e.g. 1.0
-    let servingUnit: String        // e.g. "cup"
-    let servingSize: Double        // weight in grams
+    let servingQuantity: Double       // e.g. 1.0
+    let servingUnit: String           // e.g. "cup"
+    let servingWeightGrams: Double    // gram weight of one serving, e.g. 240.0
     let photoURL: URL?
-    let brandName: String?         // nil for common (unbranded) foods
+    let brandName: String?            // nil for unbranded (common) foods
     let validation: MacroValidator.Result
-    // Note: MacroValidator.Result is a struct of Bool + Double, so it is
-    // implicitly Sendable. If that struct ever gains a non-Sendable field,
-    // this conformance will need to be revisited.
 }
 
-struct NutritionixSuggestion: Sendable {
-    enum Kind: Sendable { case common, branded }
+struct NutritionixSuggestion {
+    // Equatable so tests can use #expect(kind == .common)
+    enum Kind: Equatable { case common, branded }
     let name: String
     let brandName: String?
     let photoURL: URL?
     let kind: Kind
+    let nixItemId: String?   // use with nixItemIdSearch for branded items
 }
 
-enum NutritionixError: Error, LocalizedError, Sendable {
+enum NutritionixError: LocalizedError {
     case invalidCredentials          // HTTP 401
     case rateLimitExceeded           // HTTP 429
     case httpError(statusCode: Int)  // other 4xx / 5xx
@@ -152,78 +139,56 @@ enum NutritionixError: Error, LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidCredentials:        return "Invalid API credentials."
-        case .rateLimitExceeded:         return "Too many requests — please wait a moment."
-        case .httpError(let code):       return "Server error (HTTP \(code))."
-        case .networkFailure(let err):   return err.localizedDescription
-        case .decodingFailure:           return "Unexpected response format."
-        case .noResults:                 return "No results found."
+        case .invalidCredentials:    return "Invalid API credentials."
+        case .rateLimitExceeded:     return "Too many requests — please wait a moment."
+        case .httpError(let code):   return "Server error (HTTP \(code))."
+        case .networkFailure(let e): return e.localizedDescription
+        case .decodingFailure:       return "Unexpected response from server."
+        case .noResults:             return "No results found."
         }
     }
 }
 
-extension NutritionixError: Equatable {
-    static func == (lhs: NutritionixError, rhs: NutritionixError) -> Bool {
-        switch (lhs, rhs) {
-        case (.invalidCredentials, .invalidCredentials),
-             (.rateLimitExceeded, .rateLimitExceeded),
-             (.noResults, .noResults),
-             (.decodingFailure, .decodingFailure):
-            return true
-        case (.httpError(let a), .httpError(let b)):
-            return a == b
-        case (.networkFailure(let a), .networkFailure(let b)):
-            return a == b
-        default:
-            return false
-        }
-    }
-}
+// MARK: - Internal Codable Types
+// Decode raw Nutritionix JSON. Not exposed outside this module.
 
-// MARK: - Internal Codable types (Nutritionix wire format)
-// These are not exposed through the protocol. Field names mirror Nutritionix's
-// snake_case JSON directly to avoid CodingKeys boilerplate.
-
-struct NXPhoto: Codable {
-    let thumb: String?
-}
-
-/// Shared food shape returned by both /v2/natural/nutrients and /v2/search/item
-struct NXFood: Codable {
-    let food_name: String?
+struct NXFood: Decodable {
+    let food_name: String           // non-optional — required field; absence throws DecodingError
     let brand_name: String?
-    let serving_qty: Double?
-    let serving_unit: String?
+    let serving_qty: Double?        // optional defensive; always present for real API responses
+    let serving_unit: String
     let serving_weight_grams: Double?
     let nf_calories: Double?
     let nf_protein: Double?
     let nf_total_carbohydrate: Double?
     let nf_total_fat: Double?
     let photo: NXPhoto?
+    let nix_item_id: String?
 }
 
-/// Response from POST /v2/natural/nutrients
-struct NXNaturalResponse: Codable {
+struct NXPhoto: Decodable {
+    let thumb: String?
+}
+
+// POST /v2/natural/nutrients  →  { "foods": [...] }
+struct NXNutrientsResponse: Decodable {
     let foods: [NXFood]
 }
 
-/// Response from GET /v2/search/item?upc=
-struct NXSearchItemResponse: Codable {
-    let foods: [NXFood]
+// GET /v2/search/item  →  { "foods": [...] }
+typealias NXSearchItemResponse = NXNutrientsResponse
+
+// GET /v2/search/instant  →  { "common": [...], "branded": [...] }
+struct NXSearchInstantResponse: Decodable {
+    let branded: [NXInstantItem]
+    let common: [NXInstantItem]
 }
 
-/// Single autocomplete suggestion from /v2/search/instant
-struct NXInstantItem: Codable {
+struct NXInstantItem: Decodable {
     let food_name: String
     let brand_name: String?
     let photo: NXPhoto?
-}
-
-/// Response from GET /v2/search/instant?query=
-/// Both arrays are optional — Nutritionix omits them when there are no matches.
-struct NXInstantResponse: Codable {
-    let common: [NXInstantItem]?
-    let branded: [NXInstantItem]?
+    let nix_item_id: String?
 }
 ```
 
@@ -243,19 +208,20 @@ Expected: `** BUILD SUCCEEDED **`
 
 ```bash
 git add MacroBitt/Services/NutritionixModels.swift
-git commit -m "feat: add NutritionixModels — domain types and Codable wire structs"
+git commit -m "feat: add NutritionixModels — domain types, NutritionixError, internal NX Codable types"
 ```
 
 ---
 
-### Task 3: NutritionixService.swift — protocol + skeleton
-
-Create a skeleton that compiles and satisfies the protocol so tests can be written against it in the next task.
+### Task 3: NutritionixService.swift skeleton + write all tests
 
 **Files:**
 - Create: `MacroBitt/Services/NutritionixService.swift`
+- Create: `MacroBittTests/NutritionixServiceTests.swift`
 
-- [ ] **Step 1: Create the file with a stub implementation**
+Create a skeleton service (stubs all methods so the test file compiles), then write all 16 tests. Group A mock tests will pass immediately. Group B parsing tests will fail (stubs throw `noResults`). That failure is the expected TDD red state.
+
+- [ ] **Step 1: Create NutritionixService.swift skeleton**
 
 ```swift
 //
@@ -270,28 +236,31 @@ import Foundation
 protocol NutritionixServiceProtocol: Sendable {
     func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem]
     func barcodeSearch(upc: String) async throws -> NutritionixFoodItem
+    func nixItemIdSearch(id: String) async throws -> NutritionixFoodItem
     func keywordSearch(query: String) async throws -> [NutritionixSuggestion]
 }
 
-// MARK: - Concrete service
+// MARK: - Concrete Implementation
 
 final class NutritionixService: NutritionixServiceProtocol, @unchecked Sendable {
+
+    private static let baseURL = "https://trackapi.nutritionix.com"
 
     private let session: URLSession
     private let appID: String
     private let appKey: String
 
-    private static let baseURL = "https://trackapi.nutritionix.com"
-
-    init(session: URLSession = .shared,
-         appID: String = Config.nutritionixAppID,
-         appKey: String = Config.nutritionixAppKey) {
+    init(
+        session: URLSession = .shared,
+        appID: String = Config.nutritionixAppID,
+        appKey: String = Config.nutritionixAppKey
+    ) {
         self.session = session
         self.appID = appID
         self.appKey = appKey
     }
 
-    // MARK: - Public methods (stubbed — implemented in Task 5)
+    // MARK: - Public Methods (stubs — implemented in Task 4)
 
     func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem] {
         throw NutritionixError.noResults
@@ -301,121 +270,38 @@ final class NutritionixService: NutritionixServiceProtocol, @unchecked Sendable 
         throw NutritionixError.noResults
     }
 
+    func nixItemIdSearch(id: String) async throws -> NutritionixFoodItem {
+        throw NutritionixError.noResults
+    }
+
     func keywordSearch(query: String) async throws -> [NutritionixSuggestion] {
         throw NutritionixError.noResults
     }
 
-    // MARK: - Private helpers
+    // MARK: - Private Helpers (stubs — implemented in Task 4)
 
-    private func authorizedRequest(url: URL, method: String = "GET", body: Data? = nil) -> URLRequest {
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue(appID, forHTTPHeaderField: "x-app-id")
-        request.setValue(appKey, forHTTPHeaderField: "x-app-key")
-        if let body {
-            request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-        return request
+    private func authorizedRequest(url: URL, method: String, body: Data?) -> URLRequest {
+        URLRequest(url: url)
     }
 
-    private func perform(_ request: URLRequest) async throws -> Data {
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let urlError as URLError {
-            throw NutritionixError.networkFailure(urlError)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw NutritionixError.httpError(statusCode: 0)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw mapHTTPError(http)
-        }
-        return data
+    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+        throw NutritionixError.noResults
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        do {
-            return try JSONDecoder().decode(type, from: data)
-        } catch let decodingError as DecodingError {
-            throw NutritionixError.decodingFailure(decodingError)
-        }
-    }
+    private func mapStatusCode(_ response: HTTPURLResponse) throws {}
 
-    private func mapHTTPError(_ response: HTTPURLResponse) -> NutritionixError {
-        switch response.statusCode {
-        case 401: return .invalidCredentials
-        case 429: return .rateLimitExceeded
-        default:  return .httpError(statusCode: response.statusCode)
-        }
-    }
-
-    private func parse(_ item: NXFood) -> NutritionixFoodItem {
-        let cal  = item.nf_calories ?? 0
-        let prot = item.nf_protein ?? 0
-        let carb = item.nf_total_carbohydrate ?? 0
-        let fat  = item.nf_total_fat ?? 0
-        return NutritionixFoodItem(
-            name:            item.food_name ?? "",
-            calories:        cal,
-            protein:         prot,
-            carbs:           carb,
-            fat:             fat,
-            servingQuantity: item.serving_qty ?? 1,
-            servingUnit:     item.serving_unit ?? "serving",
-            servingSize:     item.serving_weight_grams ?? 0,
-            photoURL:        item.photo?.thumb.flatMap { URL(string: $0) },
-            brandName:       item.brand_name,
-            validation:      MacroValidator.validate(calories: cal, protein: prot,
-                                                     carbs: carb, fat: fat)
-        )
-    }
-
-    private func parseSuggestion(_ item: NXInstantItem,
-                                  kind: NutritionixSuggestion.Kind) -> NutritionixSuggestion {
-        NutritionixSuggestion(
-            name:      item.food_name,
-            brandName: item.brand_name,
-            photoURL:  item.photo?.thumb.flatMap { URL(string: $0) },
-            kind:      kind
+    private func parse(_ nxFood: NXFood) -> NutritionixFoodItem {
+        NutritionixFoodItem(
+            name: "", calories: 0, protein: 0, carbs: 0, fat: 0,
+            servingQuantity: 0, servingUnit: "", servingWeightGrams: 0,
+            photoURL: nil, brandName: nil,
+            validation: MacroValidator.validate(calories: 0, protein: 0, carbs: 0, fat: 0)
         )
     }
 }
 ```
 
-- [ ] **Step 2: Build to verify**
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild -project MacroBitt.xcodeproj \
-    -scheme MacroBitt \
-    -destination 'platform=iOS Simulator,id=83F1370A-8A66-4CC5-9784-3E7B220234F1' \
-    build 2>&1 | grep -E "error:|BUILD"
-```
-
-Expected: `** BUILD SUCCEEDED **`
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add MacroBitt/Services/NutritionixService.swift
-git commit -m "feat: add NutritionixService skeleton — protocol + stub methods"
-```
-
----
-
-### Task 4: Write tests (Group B — concrete service, failing)
-
-Group B tests exercise the real `NutritionixService` via a `URLProtocol` stub. They will **fail** after this task because the service methods still throw `noResults`. That is expected — this is the TDD failing phase.
-
-> **Note on Group A tests (Task 6):** Group A tests use `MockNutritionixService` — a hand-written struct that trivially satisfies the protocol. Protocol-level mock tests pass immediately by construction and do not go through a failing phase. They verify the protocol contract and error propagation, not the implementation internals. Only Group B tests drive implementation via a failing cycle.
-
-**Files:**
-- Create: `MacroBittTests/NutritionixServiceTests.swift`
-
-- [ ] **Step 1: Create the test file with the URLProtocol stub and Group B tests**
+- [ ] **Step 2: Create NutritionixServiceTests.swift with all 16 tests**
 
 ```swift
 //
@@ -427,452 +313,364 @@ import Testing
 import Foundation
 @testable import MacroBitt
 
-// MARK: - URLProtocol stub
-// Intercepts all requests made through a configured URLSession and returns
-// static data + status code. Tests using this stub must run serially
-// (see @Suite(.serialized) below) to avoid races on the static properties.
+// MARK: - StubURLProtocol
+// Intercepts URLSession requests. Set stubbedResponse before the service call,
+// clear it in a defer block. One test → one request → one stub.
 
-final class NutritionixURLStub: URLProtocol, @unchecked Sendable {
-    static var responseData: Data = Data()
-    static var responseCode: Int = 200
+final class StubURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var stubbedResponse: (Data, URLResponse)?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: NutritionixURLStub.responseCode,
-            httpVersion: nil,
-            headerFields: nil
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: NutritionixURLStub.responseData)
+        if let (data, response) = StubURLProtocol.stubbedResponse {
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+        }
         client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {}
+
+    static func stub(json: String, statusCode: Int = 200) {
+        let data = Data(json.utf8)
+        let response = HTTPURLResponse(
+            url: URL(string: "https://stub.test")!,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        stubbedResponse = (data, response)
+    }
 }
 
-// MARK: - Helpers
+// MARK: - Service factory for stub tests
 
-private func makeStubSession() -> URLSession {
+private func makeStubService() -> NutritionixService {
     let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [NutritionixURLStub.self]
-    return URLSession(configuration: config)
+    config.protocolClasses = [StubURLProtocol.self]
+    return NutritionixService(session: URLSession(configuration: config),
+                              appID: "test", appKey: "test")
 }
 
-private func makeService(json: String, statusCode: Int = 200) -> NutritionixService {
-    NutritionixURLStub.responseData = Data(json.utf8)
-    NutritionixURLStub.responseCode = statusCode
-    return NutritionixService(session: makeStubSession(), appID: "test-id", appKey: "test-key")
-}
+// MARK: - Fixture JSON
 
-// MARK: - JSON fixtures
-
-// P=30×4 + C=50×4 + F=10×9 = 120+200+90 = 410 kcal → valid macros
-private let naturalValidJSON = """
+// (fat=5)×9 + (carbs=0.4)×4 + (protein=6)×4 = 45+1.6+24 = 70.6 kcal
+// calories=72 → diff=1.4 ≤ 5 → isValid = true
+private let validNutrientsJSON = """
 {
-    "foods": [{
-        "food_name": "grilled chicken",
-        "brand_name": null,
-        "serving_qty": 1.0,
-        "serving_unit": "breast",
-        "serving_weight_grams": 150.0,
-        "nf_calories": 410.0,
-        "nf_protein": 30.0,
-        "nf_total_carbohydrate": 50.0,
-        "nf_total_fat": 10.0,
-        "photo": { "thumb": "https://example.com/chicken.jpg" }
-    }]
+  "foods": [{
+    "food_name": "egg",
+    "brand_name": null,
+    "serving_qty": 1.0,
+    "serving_unit": "large",
+    "serving_weight_grams": 50.0,
+    "nf_calories": 72.0,
+    "nf_protein": 6.0,
+    "nf_total_carbohydrate": 0.4,
+    "nf_total_fat": 5.0,
+    "photo": {"thumb": "https://example.com/egg.jpg"},
+    "nix_item_id": null
+  }]
 }
 """
 
-// Same macros as above but calories=600 → difference = 600-410 = 190 → invalid
-private let naturalMismatchedJSON = """
+// (fat=2)×9 + (carbs=0.4)×4 + (protein=6)×4 = 18+1.6+24 = 43.6 kcal
+// calories=200 → diff=156.4 > 5 → isValid = false
+private let mismatchedMacrosJSON = """
 {
-    "foods": [{
-        "food_name": "mystery food",
-        "brand_name": null,
-        "serving_qty": 1.0,
-        "serving_unit": "serving",
-        "serving_weight_grams": 100.0,
-        "nf_calories": 600.0,
-        "nf_protein": 30.0,
-        "nf_total_carbohydrate": 50.0,
-        "nf_total_fat": 10.0,
-        "photo": null
-    }]
+  "foods": [{
+    "food_name": "test_food",
+    "brand_name": null,
+    "serving_qty": 1.0,
+    "serving_unit": "serving",
+    "serving_weight_grams": 50.0,
+    "nf_calories": 200.0,
+    "nf_protein": 6.0,
+    "nf_total_carbohydrate": 0.4,
+    "nf_total_fat": 2.0,
+    "photo": null,
+    "nix_item_id": null
+  }]
 }
 """
 
-// P=6×4 + C=17×4 + F=15×9 = 24+68+135 = 227 kcal → calories matches → valid macros
-private let barcodeJSON = """
+private let barcodeItemJSON = """
 {
-    "foods": [{
-        "food_name": "Kind Bar",
-        "brand_name": "Kind",
-        "serving_qty": 1.0,
-        "serving_unit": "bar",
-        "serving_weight_grams": 40.0,
-        "nf_calories": 227.0,
-        "nf_protein": 6.0,
-        "nf_total_carbohydrate": 17.0,
-        "nf_total_fat": 15.0,
-        "photo": null
-    }]
+  "foods": [{
+    "food_name": "Coca-Cola",
+    "brand_name": "Coca-Cola",
+    "serving_qty": 1.0,
+    "serving_unit": "can",
+    "serving_weight_grams": 355.0,
+    "nf_calories": 140.0,
+    "nf_protein": 0.0,
+    "nf_total_carbohydrate": 39.0,
+    "nf_total_fat": 0.0,
+    "photo": null,
+    "nix_item_id": "coke_nix_123"
+  }]
 }
 """
 
 private let emptyFoodsJSON = """
-{ "foods": [] }
+{"foods": []}
 """
 
-// common items come first, branded second in the merged result
-private let instantJSON = """
+private let instantSearchJSON = """
 {
-    "common": [
-        { "food_name": "apple", "brand_name": null, "photo": { "thumb": "https://example.com/apple.jpg" } }
-    ],
-    "branded": [
-        { "food_name": "Apple Juice", "brand_name": "Tropicana", "photo": null }
-    ]
+  "common": [
+    {"food_name": "chicken breast", "brand_name": null, "photo": null, "nix_item_id": null}
+  ],
+  "branded": [
+    {"food_name": "Chicken McNuggets", "brand_name": "McDonald's", "photo": null, "nix_item_id": "nix_mcnuggets_123"}
+  ]
 }
 """
 
-private let malformedJSON = "{ not valid json !!!"
-
-// MARK: - Group B: Concrete NutritionixService with URLProtocol stub
-// Run serially to prevent races on NutritionixURLStub static properties.
-
-@Suite(.serialized)
-struct ConcreteNutritionixServiceTests {
-
-    // Test 6
-    @Test func naturalLanguageSearch_parsesAllFields() async throws {
-        let service = makeService(json: naturalValidJSON)
-        let results = try await service.naturalLanguageSearch(query: "grilled chicken")
-        #expect(results.count == 1)
-        let item = results[0]
-        #expect(item.name == "grilled chicken")
-        #expect(item.calories == 410)
-        #expect(item.protein == 30)
-        #expect(item.carbs == 50)
-        #expect(item.fat == 10)
-        #expect(item.servingQuantity == 1.0)
-        #expect(item.servingUnit == "breast")
-        #expect(item.servingSize == 150.0)
-        #expect(item.photoURL == URL(string: "https://example.com/chicken.jpg"))
-        #expect(item.brandName == nil)
-    }
-
-    // Test 7
-    @Test func naturalLanguageSearch_validMacros_validationIsValid() async throws {
-        let service = makeService(json: naturalValidJSON)
-        let results = try await service.naturalLanguageSearch(query: "grilled chicken")
-        #expect(results[0].validation.isValid)
-    }
-
-    // Test 8 — difference = provided(600) − calculated(410) = 190
-    @Test func naturalLanguageSearch_mismatchedMacros_validationFails() async throws {
-        let service = makeService(json: naturalMismatchedJSON)
-        let results = try await service.naturalLanguageSearch(query: "mystery food")
-        let item = results[0]
-        #expect(!item.validation.isValid)
-        #expect(item.validation.difference == 190)
-    }
-
-    // Test 9a
-    @Test func barcodeSearch_returnsSingleItem() async throws {
-        let service = makeService(json: barcodeJSON)
-        let item = try await service.barcodeSearch(upc: "602652175561")
-        #expect(item.name == "Kind Bar")
-        #expect(item.brandName == "Kind")
-    }
-
-    // Test 9b
-    @Test func barcodeSearch_emptyFoods_throwsNoResults() async throws {
-        let service = makeService(json: emptyFoodsJSON)
-        await #expect(throws: NutritionixError.noResults) {
-            _ = try await service.barcodeSearch(upc: "000000000000")
-        }
-    }
-
-    // Test 10 — common items first, then branded
-    @Test func keywordSearch_combinesCommonAndBrandedInOrder() async throws {
-        let service = makeService(json: instantJSON)
-        let results = try await service.keywordSearch(query: "apple")
-        #expect(results.count == 2)
-        #expect(results[0].name == "apple")
-        #expect(results[0].kind == .common)
-        #expect(results[1].name == "Apple Juice")
-        #expect(results[1].kind == .branded)
-        #expect(results[1].brandName == "Tropicana")
-    }
-
-    // Test 11
-    @Test func http429_throwsRateLimitExceeded() async throws {
-        let service = makeService(json: "{}", statusCode: 429)
-        await #expect(throws: NutritionixError.rateLimitExceeded) {
-            _ = try await service.naturalLanguageSearch(query: "pizza")
-        }
-    }
-
-    // Test 12
-    @Test func http401_throwsInvalidCredentials() async throws {
-        let service = makeService(json: "{}", statusCode: 401)
-        await #expect(throws: NutritionixError.invalidCredentials) {
-            _ = try await service.barcodeSearch(upc: "12345")
-        }
-    }
-
-    // Test 13
-    @Test func malformedJSON_throwsDecodingFailure() async throws {
-        let service = makeService(json: malformedJSON)
-        await #expect {
-            _ = try await service.naturalLanguageSearch(query: "test")
-        } throws: { error in
-            guard let e = error as? NutritionixError,
-                  case .decodingFailure = e else { return false }
-            return true
-        }
-    }
+// food_name is non-optional in NXFood — absence triggers DecodingError.keyNotFound
+private let missingFoodNameJSON = """
+{
+  "foods": [{
+    "serving_qty": 1.0,
+    "serving_unit": "serving",
+    "serving_weight_grams": 50.0,
+    "nf_calories": 72.0
+  }]
 }
-```
+"""
 
-- [ ] **Step 2: Run the tests — verify they fail (not error, but fail)**
+// MARK: - MockNutritionixService
+// final class (not struct) — a struct cannot mutate stored properties
+// through a Sendable protocol reference in Swift 6.
 
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild test \
-    -project MacroBitt.xcodeproj \
-    -scheme MacroBittTests \
-    -destination 'platform=iOS Simulator,id=83F1370A-8A66-4CC5-9784-3E7B220234F1' \
-    2>&1 | grep -E "passed|failed|error:|BUILD"
-```
-
-Expected: `BUILD SUCCEEDED` but the 9 `ConcreteNutritionixServiceTests` cases **fail** (the stub methods throw `.noResults` for everything). This confirms the tests are wired up correctly and are meaningfully failing.
-
-- [ ] **Step 3: Commit the failing test file**
-
-```bash
-git add MacroBittTests/NutritionixServiceTests.swift
-git commit -m "test: add Group B NutritionixService tests (failing — implementation not yet written)"
-```
-
----
-
-### Task 5: Implement service methods — make Group B tests pass
-
-**Files:**
-- Modify: `MacroBitt/Services/NutritionixService.swift`
-
-Replace the three stub methods with real implementations.
-
-- [ ] **Step 1: Replace `naturalLanguageSearch`**
-
-Find and replace the stub:
-
-```swift
-    func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem] {
-        throw NutritionixError.noResults
-    }
-```
-
-With:
-
-```swift
-    func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem] {
-        let url = URL(string: "\(Self.baseURL)/v2/natural/nutrients")!
-        // JSONEncoder().encode([String: String]) cannot fail in practice,
-        // but if it does the error propagates as-is (not as NutritionixError).
-        let body = try JSONEncoder().encode(["query": query])
-        let request = authorizedRequest(url: url, method: "POST", body: body)
-        let data = try await perform(request)
-        let response = try decode(NXNaturalResponse.self, from: data)
-        return response.foods.map { parse($0) }
-    }
-```
-
-- [ ] **Step 2: Replace `barcodeSearch`**
-
-Find and replace the stub:
-
-```swift
-    func barcodeSearch(upc: String) async throws -> NutritionixFoodItem {
-        throw NutritionixError.noResults
-    }
-```
-
-With:
-
-```swift
-    func barcodeSearch(upc: String) async throws -> NutritionixFoodItem {
-        var components = URLComponents(string: "\(Self.baseURL)/v2/search/item")!
-        components.queryItems = [URLQueryItem(name: "upc", value: upc)]
-        let request = authorizedRequest(url: components.url!)
-        let data = try await perform(request)
-        let response = try decode(NXSearchItemResponse.self, from: data)
-        guard let first = response.foods.first else { throw NutritionixError.noResults }
-        return parse(first)
-    }
-```
-
-- [ ] **Step 3: Replace `keywordSearch`**
-
-Find and replace the stub:
-
-```swift
-    func keywordSearch(query: String) async throws -> [NutritionixSuggestion] {
-        throw NutritionixError.noResults
-    }
-```
-
-With:
-
-```swift
-    func keywordSearch(query: String) async throws -> [NutritionixSuggestion] {
-        var components = URLComponents(string: "\(Self.baseURL)/v2/search/instant")!
-        components.queryItems = [URLQueryItem(name: "query", value: query)]
-        let request = authorizedRequest(url: components.url!)
-        let data = try await perform(request)
-        let response = try decode(NXInstantResponse.self, from: data)
-        let common  = (response.common  ?? []).map { parseSuggestion($0, kind: .common)  }
-        let branded = (response.branded ?? []).map { parseSuggestion($0, kind: .branded) }
-        return common + branded
-    }
-```
-
-- [ ] **Step 4: Run Group B tests — all 9 should pass**
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild test \
-    -project MacroBitt.xcodeproj \
-    -scheme MacroBittTests \
-    -destination 'platform=iOS Simulator,id=83F1370A-8A66-4CC5-9784-3E7B220234F1' \
-    2>&1 | grep -E "passed|failed|error:|BUILD"
-```
-
-Expected: All 9 `ConcreteNutritionixServiceTests` cases **pass**. Previously-passing `MacroValidatorTests` still pass.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add MacroBitt/Services/NutritionixService.swift
-git commit -m "feat: implement NutritionixService — natural language, barcode, keyword search"
-```
-
----
-
-### Task 6: Add Group A tests (MockNutritionixService)
-
-Group A tests verify the protocol interface works correctly with a mock. They also test that `NutritionixError` propagates through the protocol boundary.
-
-**Files:**
-- Modify: `MacroBittTests/NutritionixServiceTests.swift`
-
-- [ ] **Step 1: Add `MockNutritionixService` and Group A tests at the end of the test file**
-
-Append after the closing `}` of `ConcreteNutritionixServiceTests`:
-
-```swift
-// MARK: - Mock (Group A)
-
-struct MockNutritionixService: NutritionixServiceProtocol {
-    var naturalLanguageResult: [NutritionixFoodItem] = []
-    var barcodeResult: NutritionixFoodItem? = nil
-    var keywordResult: [NutritionixSuggestion] = []
-    var thrownError: (any Error)? = nil
+final class MockNutritionixService: NutritionixServiceProtocol, @unchecked Sendable {
+    var stubbedItems: [NutritionixFoodItem] = []
+    var stubbedSuggestions: [NutritionixSuggestion] = []
+    var errorToThrow: (any Error)?
 
     func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem] {
-        if let error = thrownError { throw error }
-        return naturalLanguageResult
+        if let error = errorToThrow { throw error }
+        return stubbedItems
     }
-
     func barcodeSearch(upc: String) async throws -> NutritionixFoodItem {
-        if let error = thrownError { throw error }
-        guard let item = barcodeResult else { throw NutritionixError.noResults }
-        return item
+        if let error = errorToThrow { throw error }
+        guard let first = stubbedItems.first else { throw NutritionixError.noResults }
+        return first
     }
-
+    func nixItemIdSearch(id: String) async throws -> NutritionixFoodItem {
+        if let error = errorToThrow { throw error }
+        guard let first = stubbedItems.first else { throw NutritionixError.noResults }
+        return first
+    }
     func keywordSearch(query: String) async throws -> [NutritionixSuggestion] {
-        if let error = thrownError { throw error }
-        return keywordResult
+        if let error = errorToThrow { throw error }
+        return stubbedSuggestions
     }
 }
 
-// MARK: - Fixture for Group A
-
-private let mockFoodItem = NutritionixFoodItem(
-    name: "egg",
-    calories: 148,
-    protein: 10,
-    carbs: 2,
-    fat: 10,
-    servingQuantity: 2,
-    servingUnit: "large",
-    servingSize: 100,
-    photoURL: nil,
-    brandName: nil,
-    validation: MacroValidator.validate(calories: 148, protein: 10, carbs: 2, fat: 10)
-)
-
-// MARK: - Group A: MockNutritionixService protocol tests
+// MARK: - Group A: MockNutritionixService Tests (tests 1–6)
 
 struct MockNutritionixServiceTests {
 
-    // Test 1
-    @Test func naturalLanguageSearch_returnsConfiguredItems() async throws {
-        var mock = MockNutritionixService()
-        mock.naturalLanguageResult = [mockFoodItem]
-        let results = try await mock.naturalLanguageSearch(query: "2 eggs")
+    // Helpers for building test items
+    private func makeItem(calories: Double = 410, protein: Double = 30,
+                          carbs: Double = 50, fat: Double = 10) -> NutritionixFoodItem {
+        NutritionixFoodItem(
+            name: "Test Food", calories: calories, protein: protein,
+            carbs: carbs, fat: fat, servingQuantity: 1.0,
+            servingUnit: "serving", servingWeightGrams: 100.0,
+            photoURL: nil, brandName: nil,
+            validation: MacroValidator.validate(calories: calories,
+                                                protein: protein, carbs: carbs, fat: fat)
+        )
+    }
+
+    // 1. naturalLanguageSearch returns caller-supplied items
+    @Test func naturalLanguageSearch_returnsStubbedItems() async throws {
+        let mock = MockNutritionixService()
+        mock.stubbedItems = [makeItem()]
+        let results = try await mock.naturalLanguageSearch(query: "anything")
         #expect(results.count == 1)
-        #expect(results[0].name == "egg")
+        #expect(results[0].name == "Test Food")
     }
 
-    // Test 2
-    @Test func barcodeSearch_returnsConfiguredItem() async throws {
-        var mock = MockNutritionixService()
-        mock.barcodeResult = mockFoodItem
-        let item = try await mock.barcodeSearch(upc: "012345678901")
-        #expect(item.name == "egg")
+    // 2. barcodeSearch throws noResults when configured
+    @Test func barcodeSearch_throwsConfiguredNoResults() async throws {
+        let mock = MockNutritionixService()
+        mock.errorToThrow = NutritionixError.noResults
+        var threw = false
+        do { _ = try await mock.barcodeSearch(upc: "000000000000") }
+        catch NutritionixError.noResults { threw = true }
+        #expect(threw)
     }
 
-    // Test 3
-    @Test func barcodeSearch_nilResult_throwsNoResults() async throws {
-        let mock = MockNutritionixService()   // barcodeResult is nil by default
-        await #expect(throws: NutritionixError.noResults) {
-            _ = try await mock.barcodeSearch(upc: "000000000000")
-        }
-    }
-
-    // Test 4
-    @Test func keywordSearch_returnsCorrectKinds() async throws {
-        var mock = MockNutritionixService()
-        mock.keywordResult = [
-            NutritionixSuggestion(name: "apple", brandName: nil, photoURL: nil, kind: .common),
-            NutritionixSuggestion(name: "Apple Juice", brandName: "Tropicana", photoURL: nil, kind: .branded)
+    // 3. keywordSearch returns suggestions with correct kind values
+    @Test func keywordSearch_returnsSuggestionsWithCorrectKind() async throws {
+        let mock = MockNutritionixService()
+        mock.stubbedSuggestions = [
+            NutritionixSuggestion(name: "apple", brandName: nil,
+                                  photoURL: nil, kind: .common, nixItemId: nil),
+            NutritionixSuggestion(name: "Apple Juice", brandName: "Tropicana",
+                                  photoURL: nil, kind: .branded, nixItemId: "nix_123")
         ]
         let results = try await mock.keywordSearch(query: "apple")
         #expect(results.count == 2)
         #expect(results[0].kind == .common)
         #expect(results[1].kind == .branded)
-        #expect(results[1].brandName == "Tropicana")
+        #expect(results[1].nixItemId == "nix_123")
     }
 
-    // Test 5
-    @Test func thrownError_propagatesToCaller() async throws {
-        var mock = MockNutritionixService()
-        mock.thrownError = NutritionixError.rateLimitExceeded
-        await #expect(throws: NutritionixError.rateLimitExceeded) {
-            _ = try await mock.naturalLanguageSearch(query: "chicken")
-        }
+    // 4. rateLimitExceeded propagates to caller
+    @Test func rateLimitExceeded_propagatesToCaller() async throws {
+        let mock = MockNutritionixService()
+        mock.errorToThrow = NutritionixError.rateLimitExceeded
+        var threw = false
+        do { _ = try await mock.naturalLanguageSearch(query: "anything") }
+        catch NutritionixError.rateLimitExceeded { threw = true }
+        #expect(threw)
+    }
+
+    // 5. invalidCredentials propagates to caller
+    @Test func invalidCredentials_propagatesToCaller() async throws {
+        let mock = MockNutritionixService()
+        mock.errorToThrow = NutritionixError.invalidCredentials
+        var threw = false
+        do { _ = try await mock.barcodeSearch(upc: "000000000000") }
+        catch NutritionixError.invalidCredentials { threw = true }
+        #expect(threw)
+    }
+
+    // 6. validation.isValid == false survives the protocol boundary
+    @Test func validationField_survivesProtocolBoundary() async throws {
+        let mock = MockNutritionixService()
+        // calories=600 but macros sum to 410 → diff=190 → isValid=false
+        mock.stubbedItems = [makeItem(calories: 600)]
+        let results = try await mock.naturalLanguageSearch(query: "anything")
+        #expect(results[0].validation.isValid == false)
+        #expect(results[0].validation.difference == 190.0)
+    }
+}
+
+// MARK: - Group B: Real Parsing Tests via StubURLProtocol (tests 7–16)
+
+struct NutritionixServiceParsingTests {
+
+    // 7. naturalLanguageSearch parses all fields correctly
+    @Test func naturalLanguageSearch_parsesFieldsCorrectly() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: validNutrientsJSON)
+        let items = try await makeStubService().naturalLanguageSearch(query: "egg")
+        #expect(items.count == 1)
+        let item = items[0]
+        #expect(item.name == "egg")
+        #expect(item.calories == 72.0)
+        #expect(item.protein == 6.0)
+        #expect(item.carbs == 0.4)
+        #expect(item.fat == 5.0)
+        #expect(item.servingQuantity == 1.0)
+        #expect(item.servingUnit == "large")
+        #expect(item.servingWeightGrams == 50.0)
+        #expect(item.photoURL?.absoluteString == "https://example.com/egg.jpg")
+        #expect(item.brandName == nil)
+    }
+
+    // 8. matching macros → validation.isValid == true
+    @Test func naturalLanguageSearch_matchingMacros_isValidTrue() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: validNutrientsJSON)  // diff = 1.4 ≤ 5
+        let items = try await makeStubService().naturalLanguageSearch(query: "egg")
+        #expect(items[0].validation.isValid == true)
+    }
+
+    // 9. mismatched macros → validation.isValid == false
+    @Test func naturalLanguageSearch_mismatchedMacros_isValidFalse() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: mismatchedMacrosJSON)  // diff = 156.4 > 5
+        let items = try await makeStubService().naturalLanguageSearch(query: "test")
+        #expect(items[0].validation.isValid == false)
+    }
+
+    // 10. barcodeSearch returns correctly parsed item
+    @Test func barcodeSearch_parsesFieldsCorrectly() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: barcodeItemJSON)
+        let item = try await makeStubService().barcodeSearch(upc: "049000028911")
+        #expect(item.name == "Coca-Cola")
+        #expect(item.brandName == "Coca-Cola")
+        #expect(item.calories == 140.0)
+        #expect(item.servingUnit == "can")
+    }
+
+    // 11. nixItemIdSearch returns correctly parsed item (same response shape as barcodeSearch)
+    @Test func nixItemIdSearch_parsesFieldsCorrectly() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: barcodeItemJSON)
+        let item = try await makeStubService().nixItemIdSearch(id: "coke_nix_123")
+        #expect(item.name == "Coca-Cola")
+        #expect(item.brandName == "Coca-Cola")
+    }
+
+    // 12. empty foods array → throws noResults
+    @Test func barcodeSearch_emptyFoods_throwsNoResults() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: emptyFoodsJSON)
+        var threw = false
+        do { _ = try await makeStubService().barcodeSearch(upc: "000000000000") }
+        catch NutritionixError.noResults { threw = true }
+        #expect(threw)
+    }
+
+    // 13. keywordSearch returns common-first, then branded; branded has nixItemId
+    @Test func keywordSearch_returnsSuggestionsInOrder() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: instantSearchJSON)
+        let suggestions = try await makeStubService().keywordSearch(query: "chicken")
+        #expect(suggestions.count == 2)
+        #expect(suggestions[0].kind == .common)
+        #expect(suggestions[0].name == "chicken breast")
+        #expect(suggestions[1].kind == .branded)
+        #expect(suggestions[1].name == "Chicken McNuggets")
+        #expect(suggestions[1].nixItemId == "nix_mcnuggets_123")
+        #expect(suggestions[1].brandName == "McDonald's")
+    }
+
+    // 14. HTTP 429 → rateLimitExceeded
+    @Test func http429_throwsRateLimitExceeded() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: "{}", statusCode: 429)
+        var threw = false
+        do { _ = try await makeStubService().naturalLanguageSearch(query: "anything") }
+        catch NutritionixError.rateLimitExceeded { threw = true }
+        #expect(threw)
+    }
+
+    // 15. HTTP 401 → invalidCredentials
+    @Test func http401_throwsInvalidCredentials() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: "{}", statusCode: 401)
+        var threw = false
+        do { _ = try await makeStubService().naturalLanguageSearch(query: "anything") }
+        catch NutritionixError.invalidCredentials { threw = true }
+        #expect(threw)
+    }
+
+    // 16. Missing food_name (required field) → decodingFailure
+    // food_name is non-optional in NXFood; absence triggers DecodingError.keyNotFound
+    // which perform(_:) wraps as NutritionixError.decodingFailure
+    @Test func missingFoodName_throwsDecodingFailure() async throws {
+        defer { StubURLProtocol.stubbedResponse = nil }
+        StubURLProtocol.stub(json: missingFoodNameJSON)
+        var threw = false
+        do { _ = try await makeStubService().naturalLanguageSearch(query: "anything") }
+        catch NutritionixError.decodingFailure { threw = true }
+        #expect(threw)
     }
 }
 ```
 
-- [ ] **Step 2: Run all 14 tests**
+- [ ] **Step 3: Build and run tests — confirm Group A passes, Group B (parsing) fails**
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -883,20 +681,193 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
     2>&1 | grep -E "passed|failed|error:|BUILD"
 ```
 
-Expected: All 14 `NutritionixServiceTests` cases pass (5 `MockNutritionixServiceTests` + 9 `ConcreteNutritionixServiceTests`), plus the 6 existing `MacroValidatorTests`.
+Expected:
+- `MockNutritionixServiceTests` — all 6 pass
+- `NutritionixServiceParsingTests` — most fail (stubs throw `noResults`)
+- No `error:` lines (the test file itself compiles cleanly)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit skeleton + tests**
 
 ```bash
-git add MacroBittTests/NutritionixServiceTests.swift
-git commit -m "feat: add Group A mock tests — 14 NutritionixService tests total"
+git add MacroBitt/Services/NutritionixService.swift MacroBittTests/NutritionixServiceTests.swift
+git commit -m "feat: add NutritionixService skeleton and all 16 unit tests (Group B red)"
 ```
 
 ---
 
-### Task 7: Final build + verification
+### Task 4: Implement NutritionixService — make all tests green
 
-- [ ] **Step 1: Full build**
+**Files:**
+- Modify: `MacroBitt/Services/NutritionixService.swift`
+
+Replace the entire file contents (keeping the protocol unchanged, replacing all stubs with real implementations).
+
+- [ ] **Step 1: Replace NutritionixService.swift with full implementation**
+
+```swift
+//
+//  NutritionixService.swift
+//  MacroBitt
+//
+
+import Foundation
+
+// MARK: - Protocol
+
+protocol NutritionixServiceProtocol: Sendable {
+    func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem]
+    func barcodeSearch(upc: String) async throws -> NutritionixFoodItem
+    func nixItemIdSearch(id: String) async throws -> NutritionixFoodItem
+    func keywordSearch(query: String) async throws -> [NutritionixSuggestion]
+}
+
+// MARK: - Concrete Implementation
+
+final class NutritionixService: NutritionixServiceProtocol, @unchecked Sendable {
+
+    private static let baseURL = "https://trackapi.nutritionix.com"
+
+    private let session: URLSession
+    private let appID: String
+    private let appKey: String
+
+    init(
+        session: URLSession = .shared,
+        appID: String = Config.nutritionixAppID,
+        appKey: String = Config.nutritionixAppKey
+    ) {
+        self.session = session
+        self.appID = appID
+        self.appKey = appKey
+    }
+
+    // MARK: - Public Methods
+
+    func naturalLanguageSearch(query: String) async throws -> [NutritionixFoodItem] {
+        let url = URL(string: "\(Self.baseURL)/v2/natural/nutrients")!
+        let body = try JSONEncoder().encode(["query": query])
+        let request = authorizedRequest(url: url, method: "POST", body: body)
+        let response: NXNutrientsResponse = try await perform(request)
+        return response.foods.map(parse)
+    }
+
+    func barcodeSearch(upc: String) async throws -> NutritionixFoodItem {
+        var comps = URLComponents(string: "\(Self.baseURL)/v2/search/item")!
+        comps.queryItems = [URLQueryItem(name: "upc", value: upc)]
+        let request = authorizedRequest(url: comps.url!, method: "GET", body: nil)
+        let response: NXSearchItemResponse = try await perform(request)
+        guard let first = response.foods.first else { throw NutritionixError.noResults }
+        return parse(first)
+    }
+
+    func nixItemIdSearch(id: String) async throws -> NutritionixFoodItem {
+        var comps = URLComponents(string: "\(Self.baseURL)/v2/search/item")!
+        comps.queryItems = [URLQueryItem(name: "nix_item_id", value: id)]
+        let request = authorizedRequest(url: comps.url!, method: "GET", body: nil)
+        let response: NXSearchItemResponse = try await perform(request)
+        guard let first = response.foods.first else { throw NutritionixError.noResults }
+        return parse(first)
+    }
+
+    func keywordSearch(query: String) async throws -> [NutritionixSuggestion] {
+        var comps = URLComponents(string: "\(Self.baseURL)/v2/search/instant")!
+        comps.queryItems = [URLQueryItem(name: "query", value: query)]
+        let request = authorizedRequest(url: comps.url!, method: "GET", body: nil)
+        let response: NXSearchInstantResponse = try await perform(request)
+        // Common-first, then branded (spec §4a)
+        let common = response.common.map {
+            NutritionixSuggestion(name: $0.food_name, brandName: $0.brand_name,
+                                  photoURL: $0.photo?.thumb.flatMap(URL.init),
+                                  kind: .common, nixItemId: $0.nix_item_id)
+        }
+        let branded = response.branded.map {
+            NutritionixSuggestion(name: $0.food_name, brandName: $0.brand_name,
+                                  photoURL: $0.photo?.thumb.flatMap(URL.init),
+                                  kind: .branded, nixItemId: $0.nix_item_id)
+        }
+        return common + branded
+    }
+
+    // MARK: - Private Helpers
+
+    private func authorizedRequest(url: URL, method: String, body: Data?) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue(appID,  forHTTPHeaderField: "x-app-id")
+        request.setValue(appKey, forHTTPHeaderField: "x-app-key")
+        request.setValue("0",    forHTTPHeaderField: "x-remote-user-id")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        return request
+    }
+
+    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+        let data: Data
+        let urlResponse: URLResponse
+        do {
+            (data, urlResponse) = try await session.data(for: request)
+        } catch let urlError as URLError {
+            throw NutritionixError.networkFailure(urlError)
+        }
+        if let http = urlResponse as? HTTPURLResponse {
+            try mapStatusCode(http)
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch let decodeError as DecodingError {
+            throw NutritionixError.decodingFailure(decodeError)
+        }
+    }
+
+    private func mapStatusCode(_ response: HTTPURLResponse) throws {
+        switch response.statusCode {
+        case 200...299: return
+        case 401:       throw NutritionixError.invalidCredentials
+        case 429:       throw NutritionixError.rateLimitExceeded
+        default:        throw NutritionixError.httpError(statusCode: response.statusCode)
+        }
+    }
+
+    private func parse(_ nxFood: NXFood) -> NutritionixFoodItem {
+        let calories = nxFood.nf_calories ?? 0.0
+        let protein  = nxFood.nf_protein ?? 0.0
+        let carbs    = nxFood.nf_total_carbohydrate ?? 0.0
+        let fat      = nxFood.nf_total_fat ?? 0.0
+        return NutritionixFoodItem(
+            name:               nxFood.food_name,
+            calories:           calories,
+            protein:            protein,
+            carbs:              carbs,
+            fat:                fat,
+            servingQuantity:    nxFood.serving_qty ?? 0.0,
+            servingUnit:        nxFood.serving_unit,
+            servingWeightGrams: nxFood.serving_weight_grams ?? 0.0,
+            photoURL:           nxFood.photo?.thumb.flatMap(URL.init),
+            brandName:          nxFood.brand_name,
+            validation:         MacroValidator.validate(
+                                    calories: calories, protein: protein,
+                                    carbs: carbs, fat: fat)
+        )
+    }
+}
+```
+
+- [ ] **Step 2: Run all tests — expect all 16 to pass**
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild test \
+    -project MacroBitt.xcodeproj \
+    -scheme MacroBittTests \
+    -destination 'platform=iOS Simulator,id=83F1370A-8A66-4CC5-9784-3E7B220234F1' \
+    2>&1 | grep -E "passed|failed|error:|BUILD"
+```
+
+Expected: All 16 `NutritionixServiceTests` pass. `MacroValidatorTests` (6) still pass. Total: 22 tests.
+
+- [ ] **Step 3: Build the app scheme**
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -908,53 +879,28 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 2: Verify `Config.swift` is gitignored**
+- [ ] **Step 4: Verify Config.swift is gitignored**
 
 ```bash
-git status
+git status MacroBitt/Config.swift
 ```
 
-Expected: `MacroBitt/Config.swift` does NOT appear. `Config.example.swift` is already committed.
+Expected: file does NOT appear in output (gitignored).
 
-- [ ] **Step 3: Verify `Config.example.swift` is at repo root (not in build target)**
+- [ ] **Step 5: Commit**
 
 ```bash
-ls Config.example.swift
+git add MacroBitt/Services/NutritionixService.swift
+git commit -m "feat: implement NutritionixService — all 16 tests passing"
 ```
-
-Expected: file exists at repo root.
-
-- [ ] **Step 4: Commit `Config.example.swift` if not yet committed**
-
-```bash
-git status | grep Config.example
-```
-
-If it appears as untracked, commit it:
-
-```bash
-git add Config.example.swift
-git commit -m "chore: add Config.example.swift to repo root"
-```
-
-- [ ] **Step 5: Manual verification checklist**
-
-Run the app (⌘R in Xcode) and verify:
-
-1. App launches without crash
-2. All existing tabs (Dashboard, Food Log, Weight, Settings) work as before
-3. No regressions in food entry or macro validation
 
 ---
 
-## Summary
+### Task 5: Commit plan doc
 
-| Task | Files | Tests |
-|------|-------|-------|
-| 1 | Config.swift, Config.example.swift, .gitignore | — |
-| 2 | NutritionixModels.swift | — |
-| 3 | NutritionixService.swift (skeleton) | — |
-| 4 | NutritionixServiceTests.swift (Group B, failing) | 9 failing |
-| 5 | NutritionixService.swift (full impl) | 9 passing |
-| 6 | NutritionixServiceTests.swift (Group A) | +5 = 14 passing |
-| 7 | — | 14 + 6 existing = 20 total |
+- [ ] **Step 1: Commit the plan**
+
+```bash
+git add docs/superpowers/plans/2026-03-24-nutritionix-service.md
+git commit -m "docs: add NutritionixService implementation plan"
+```

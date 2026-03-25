@@ -20,3 +20,7 @@ Podfile.lock
 
 # API credentials — never commit real keys
 **/Config.swift
+
+# Claude Code
+CLAUDE.md
+.claude/

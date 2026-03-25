@@ -16,7 +16,16 @@ struct MacroBittApp: App {
         do {
             return try ModelContainer(for: schema, configurations: config)
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            // Schema changed or store is corrupt — wipe and recreate.
+            // Acceptable during development; replace with a migration plan before shipping.
+            let storeURL = URL.applicationSupportDirectory
+                .appending(path: "default.store")
+            try? FileManager.default.removeItem(at: storeURL)
+            do {
+                return try ModelContainer(for: schema, configurations: config)
+            } catch let retryError {
+                fatalError("ModelContainer failed even after store reset: \(retryError)")
+            }
         }
     }()
 
