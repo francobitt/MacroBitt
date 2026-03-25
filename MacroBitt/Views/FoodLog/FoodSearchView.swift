@@ -40,6 +40,7 @@ struct FoodSearchView: View {
 
     @State private var fetchingDetailForId: String? = nil
     @State private var selectedItem: SelectedItem? = nil
+    @State private var showingBarcodeScanner = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -74,6 +75,13 @@ struct FoodSearchView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingBarcodeScanner = true
+                    } label: {
+                        Image(systemName: "barcode.viewfinder")
+                    }
+                }
             }
             .onChange(of: query) { _, newValue in
                 debounceTask?.cancel()
@@ -96,6 +104,9 @@ struct FoodSearchView: View {
             }
             .sheet(item: $selectedItem) { wrapper in
                 AddFoodEntryView(nutritionixItem: wrapper.foodItem, date: targetDate)
+            }
+            .sheet(isPresented: $showingBarcodeScanner) {
+                BarcodeScannerView(service: service, targetDate: targetDate)
             }
         }
     }

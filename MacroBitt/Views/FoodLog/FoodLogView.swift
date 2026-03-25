@@ -12,6 +12,7 @@ struct FoodLogView: View {
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var showingAddEntry = false
     @State private var showingFoodSearch = false
+    @State private var showingBarcodeScanner = false
     @State private var entryToEdit: FoodEntry?
 
     var body: some View {
@@ -39,6 +40,13 @@ struct FoodLogView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
+                        showingBarcodeScanner = true
+                    } label: {
+                        Image(systemName: "barcode.viewfinder")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
                         showingAddEntry = true
                     } label: {
                         Image(systemName: "plus")
@@ -53,6 +61,9 @@ struct FoodLogView: View {
             }
             .sheet(isPresented: $showingFoodSearch) {
                 FoodSearchView(targetDate: selectedDate, service: NutritionixService())
+            }
+            .sheet(isPresented: $showingBarcodeScanner) {
+                BarcodeScannerView(service: NutritionixService(), targetDate: selectedDate)
             }
         }
     }
